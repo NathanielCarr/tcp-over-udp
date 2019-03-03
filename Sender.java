@@ -229,7 +229,7 @@ class Sender {
 
         private void handshake() throws IOException {
             Boolean acked = false;
-            byte[] mdsBytes = { (byte) this.mds, (byte) (this.mds >> 8) };
+            byte[] mdsBytes = { (byte) (this.mds >> 8), (byte) this.mds };
             DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq), mdsBytes);
             do {
                 try {
