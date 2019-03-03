@@ -27,7 +27,6 @@ import javax.swing.JButton;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 
-
 class Sender {
 
     public static class SenderView {
@@ -128,7 +127,7 @@ class Sender {
         }
     }
 
-    public static class FileSender {
+    public static class FileSender extends Thread {
 
         public static class Header {
             private Boolean handshake;
@@ -150,82 +149,142 @@ class Sender {
                 this.seq = (header >> 6) & 1;
             }
 
-            public Boolean getHandshakeBit() {
+            public Boolean isHandshake() {
                 return this.handshake;
             }
 
-            public Boolean getAckBit() {
+            public Boolean isAck() {
                 return this.ack;
             }
 
-            public Boolean getFinBit() {
+            public Boolean isFin() {
                 return this.fin;
             }
 
-            public Boolean getSeq() {
+            public int getSeq() {
                 return this.seq;
             }
 
             public byte toByte() {
-                char[] bitArr = {
-                    this.handshake ? '1' : '0',
-                    this.ack ? '1' : '0',
-                    this.fin ? '1' : '0',
-                    this.seq != 0 ? '1' : '0',
-                    '0',
-                    '0',
-                    '0',
-                    '0'
-                };
+                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.fin ? '1' : '0',
+                        this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
                 return (byte) Byte.parseByte(String.valueOf(bitArr), 2);
             }
 
         }
 
-        public static void send(InetAddress addr, int port, int timeoutMicro, int mds, File file)
+        private DatagramSocket outSocket;
+        private DatagramSocket inSocket;
+        private int mds;
+        private int seq;
+        private Iterable<DatagramPacket> fileDatagramPackets;
+
+        public FileSender(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
+            // Format contents of file into a set of DatagramPackets with appropriate
+            // headers.
+            this.fileDatagramPackets = makeFileDatagramPackets(file, mds, addr, port);
 
-            int seq = 0;
-            DatagramSocket socket = new DatagramSocket(port, addr);
-            socket.setSoTimeout((int) (timeoutMicro / 1000));
+            // Ready output socket.
+            this.outSocket = new DatagramSocket(port, addr);
+            this.outSocket.setSoTimeout(timeoutMs);
 
-            handshake(socket);
+            // Ready input socket.
+            this.inSocket = new DatagramSocket(myPort);
+            this.inSocket.setSoTimeout(timeoutMs);
 
-            Iterable<DatagramPacket> datagrams = makeDatagrams(file, mds, seq);
+            // Set seq to 0.
+            this.seq = 0;
 
+        }
+
+        public void run() {
             try {
+                // Do handshake.
+                handshake();
+
+                int packetIndex = 0;
+
+                // Start sending packets.
                 while (true) {
-                    // TODO send datagrams, receive ACKs, timeouts.
                     try {
+                        // Send packet.
+                        this.outSocket.send(this.fileDatagramPackets[fileDatagramPackets]);
 
-                    } catch (Exception te) {
+                        // Receive response from first sequence of handshake.
+                        byte[] inBuffer = new byte[mds];
+                        DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
+                        inSocket.receive(inPacket);
 
+                        Header resHeader = new Header(inBuffer[0]);
+                        if (resHeader.isAck() && resHeader.getSeq() == this.seq) {
+                            seq++;
+                        }  
+
+                    } catch (SocketTimeoutException e) {
+                        System.out.println("Timeout!");
+                        continue;
                     }
                 }
+
+                this.inSocket.close();
+                this.outSocket.close();
+
             } catch (Exception e) {
-
-            } finally {
-                socket.close();
+                System.out.println(e.toString());
             }
+            return;
+        }
+
+        private void handshake() throws IOException {
+            while (true) {
+                try {
+                    // Send first sequence of handshake.
+                    this.outSocket.send(makeOutDatagramPacket(new Header(true, false, false, seq), new byte[0]));
+
+                    // Receive response from first sequence of handshake.
+                    byte[] inBuffer = new byte[mds];
+                    DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
+                    inSocket.receive(inPacket);
+
+                    // Check for ACK & handshake bit.
+                    Header resHeader = new Header(inBuffer[0]);
+                    if (resHeader.isHandshake() && resHeader.isAck() && resHeader.getSeq() == this.seq) {
+                        this.seq++;
+                        break;
+                    }
+
+                } catch (SocketTimeoutException e) {
+                    // Try again (resend).
+                    System.out.println("Timeout!");
+                }
+            }
+        }
+
+        public void send(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
+                throws SocketException, IOException {
 
         }
 
-        private static void handshake(DatagramSocket socket) {
-            
+        private DatagramPacket makeOutDatagramPacket(Header header, byte[] data) {
+            // add appropriate header to the front of the contents.
+            byte[] contents = new byte[1 + data.length];
+            byte[] headerByteArr = { header.toByte() };
+            System.arraycopy(headerByteArr, 0, contents, 0, 1);
+            System.arraycopy(data, 0, contents, 1, data.length);
+            return new DatagramPacket(contents, contents.length, this.outSocket.getInetAddress(),
+                    this.outSocket.getPort());
         }
-        
-        private static Iterable<DatagramPacket> makeDatagrams(File file, int mds, int startSeq) throws IOException {
+
+        private Iterable<DatagramPacket> makeFileDatagramPackets(File file, int mds, InetAddress addr, int port)
+                throws IOException {
             List<DatagramPacket> datagramList = new ArrayList<DatagramPacket>();
-
             byte[] fileBytes = Files.readAllBytes(file.toPath());
 
-            for (int i = 0; i < Math.ceil(fileBytes.length / (mds - 1)); i++) {
-                // add a header to the front of the contents.
-                byte[] contents = new byte[mds];
-                byte[] header = makeHeader(0, 0, i % 2);
-                System.arraycopy(header, 0, contents, 0, header.length);
-                System.arraycopy(fileBytes, (mds - header.length) * i, contents, header.length, (mds - header.length));
-                datagramList.add(new DatagramPacket(contents, contents.length));
+            for (int i = 0; i < fileBytes.length; i += (mds - 1)) {
+                byte[] data = new byte[mds - 1];
+                System.arraycopy(fileBytes, i, data, 0, Math.min(mds - 1, fileBytes.length - i));
+                datagramList.add(makeOutDatagramPacket(new Header(false, false, false, i % 2), data));
             }
 
             return datagramList;
