@@ -11,5 +11,12 @@
             "mainClass": "Sender",
             "console": "integratedTerminal"
         }
+        {
+            "type": "java",
+            "name": "Receiver",
+            "request": "launch",
+            "mainClass": "Receiver",
+            "console": "integratedTerminal" 
+        }
     ]
 }
