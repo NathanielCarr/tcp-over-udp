@@ -17,24 +17,51 @@ import javax.swing.JButton;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 
+import javax.swing.JFrame;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JTextArea;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import javax.swing.SwingConstants;
+import javax.swing.JTextField;
+import javax.swing.JComboBox;
+import javax.swing.JScrollPane;
+import javax.swing.JCheckBox;
+import javax.swing.ScrollPaneConstants;
+
+import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.BorderLayout;
+
 class Sender {
 
     public static void main(String[] args) throws IOException {
-        
-        InetAddress addr = InetAddress.getByName("10.84.92.50");
-        int port = 372;
-        int myPort = 373;
-        int timeoutMs = 8000;
-        int mds = 200;
-        File file = new File("C:/Users/Nathaniel/Desktop/CP367 MT.txt");
-        new FileSender(addr, port, myPort, timeoutMs, mds, file).start();
-
+        new SenderView().frmRdtSender.setVisible(true);
     }
 
     public static class SenderView {
         private JFrame frmRdtSender;
         private JTextField txtAddr;
         private JTextField txtFile;
+
+        private class ButtonListener implements ActionListener {
+
+            @Override
+            public void actionPerformed(ActionEvent evt) {
+                try {
+                } catch (Exception e) {
+
+                }
+            }
+
+        }
 
         /**
          * Create the application.
@@ -202,7 +229,8 @@ class Sender {
 
         private void handshake() throws IOException {
             Boolean acked = false;
-            DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq), new byte[0]);
+            byte[] mdsBytes = { (byte) this.mds, (byte) (this.mds >> 8) };
+            DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq), mdsBytes);
             do {
                 try {
                     // Send first sequence of handshake.
