@@ -6,6 +6,7 @@ import java.nio.file.Files; // Read byte array from file.
 import java.net.DatagramSocket;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 
@@ -16,30 +17,9 @@ import javax.swing.JTextField;
 import javax.swing.JButton;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
-
-import javax.swing.JFrame;
-import javax.swing.JButton;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
-import javax.swing.JTextArea;
-import javax.swing.JSpinner;
-import javax.swing.SpinnerNumberModel;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
-import javax.swing.SwingConstants;
-import javax.swing.JTextField;
-import javax.swing.JComboBox;
-import javax.swing.JScrollPane;
-import javax.swing.JCheckBox;
-import javax.swing.ScrollPaneConstants;
-
-import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.WindowEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.BorderLayout;
-
 class Sender {
 
     public static void main(String[] args) throws IOException {
@@ -48,16 +28,54 @@ class Sender {
 
     public static class SenderView {
         private JFrame frmRdtSender;
+        private JButton btnSend;
         private JTextField txtAddr;
         private JTextField txtFile;
+        private JLabel lblTransTime;
+        private JSpinner spnPort;
+        private JSpinner spnMyPort;
+        private JSpinner spnMDS;
+        private JSpinner spnTimeout;
+
+        private SenderThread senderThread = null;
 
         private class ButtonListener implements ActionListener {
 
             @Override
             public void actionPerformed(ActionEvent evt) {
-                try {
-                } catch (Exception e) {
-
+                if (!txtAddr.getText().matches("[0-9\\.]+")) {
+                    JOptionPane.showMessageDialog(null, "An IP address can only contain digits and '.'.",
+                            "Invalid IP Address", JOptionPane.ERROR_MESSAGE);
+                } else if (txtFile.getText() == "") {
+                    JOptionPane.showMessageDialog(null, "A file must be specified.", "Missing File",
+                            JOptionPane.ERROR_MESSAGE);
+                } else {
+                    try {
+                    InetAddress addr = InetAddress.getByName(txtAddr.getText());
+                    int port = (int) spnPort.getValue();
+                    int myPort = (int) spnMyPort.getValue();
+                    int mds = (int) spnMDS.getValue();
+                    int timeout = (int) spnTimeout.getValue();
+                    File file = new File(txtFile.getText());
+                    
+                        senderThread = new SenderThread(addr, port, myPort, mds, timeout, file);
+                    } catch (UnknownHostException e) {
+                        JOptionPane.showMessageDialog(null,
+                                "The IP address specified cannot be resolved. Please check this address.",
+                                "Bad Address", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    } catch (SocketException e) {
+                        JOptionPane.showMessageDialog(null,
+                                "Couldn't connect to the destination. Please check the IP address and port number.",
+                                "Can't Connect", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    } catch (IOException e) {
+                        JOptionPane.showMessageDialog(null,
+                                "The file couldn't be read. Please check the path and make sure it exists.",
+                                "Bad File Path", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    senderThread.start();
                 }
             }
 
@@ -128,7 +146,7 @@ class Sender {
             frmRdtSender.getContentPane().add(lblTimeout);
 
             JButton btnSend = new JButton("Send");
-            btnSend.setBounds(10, 165, 89, 23);
+            btnSend.setBounds(10, 167, 89, 23);
             frmRdtSender.getContentPane().add(btnSend);
 
             JLabel lblTransTime = new JLabel("");
@@ -137,7 +155,7 @@ class Sender {
             frmRdtSender.getContentPane().add(lblTransTime);
 
             JSpinner spnMDS = new JSpinner();
-            spnMDS.setModel(new SpinnerNumberModel(new Integer(256), new Integer(1), null, new Integer(1)));
+            spnMDS.setModel(new SpinnerNumberModel(256, 3, 65535, 1));
             spnMDS.setBounds(172, 105, 186, 20);
             frmRdtSender.getContentPane().add(spnMDS);
 
@@ -147,16 +165,23 @@ class Sender {
             frmRdtSender.getContentPane().add(spinner);
 
             JSpinner spnPort = new JSpinner();
+            spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
             spnPort.setBounds(172, 27, 88, 20);
             frmRdtSender.getContentPane().add(spnPort);
 
             JSpinner spnMyPort = new JSpinner();
+            spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
             spnMyPort.setBounds(270, 27, 88, 20);
             frmRdtSender.getContentPane().add(spnMyPort);
+
+        }
+
+        private void registerListeners() {
+            btnSend.addActionListener(new ButtonListener());
         }
     }
 
-    public static class FileSender extends Thread {
+    public static class SenderThread extends Thread {
 
         public static class Header {
             private Boolean handshake;
@@ -209,7 +234,7 @@ class Sender {
 
         private byte[] fileBytes;
 
-        public FileSender(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
+        public SenderThread(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
 
             // Get the bytes of the provided file.
