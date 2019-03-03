@@ -2,25 +2,58 @@ import java.awt.EventQueue;
 import javax.swing.JFrame;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
 import javax.swing.JTextField;
 import javax.swing.JLabel;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
 import java.awt.Font;
 import javax.swing.SwingConstants;
 import javax.swing.JToggleButton;
 import javax.swing.JButton;
+import javax.swing.JOptionPane;
+import java.net.DatagramSocket;
+import java.net.DatagramPacket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 
 class Receiver {
 
     public static class ReceiverView {
+        private ReceiverModel model;
+
+
         private JFrame frame;
         private JTextField txtIPAddress;
-        private JTextField txtDataPort;
-        private JTextField txtACKPort;
+        private JSpinner spnrDataPort;
+        private JSpinner spnrACKPort;
         private JTextField txtFileName;
         private JToggleButton tglReliability;
         private JButton bttnReceive;
         private JButton bttnCancel;
         private JLabel lblNumReceived;
+
+        /**
+	 * Updates the attributes of the model in the view.
+	 */
+	private class AttributesListener implements PropertyChangeListener {
+
+		@Override
+		public void propertyChange(final PropertyChangeEvent evt) {
+            int numP = ReceiverView.this.model.getNumPackets();
+            ReceiverView.this.lblNumReceived.setText(Integer.toString(numP));
+            if (numP > 0 && ReceiverView.this.bttnCancel.isEnabled()) {
+                ReceiverView.this.bttnCancel.setEnabled(false);
+            }
+            // if (evt.getPropertyName().equals("SenderReceiverStatus")) {
+                // use to display whether sender is sending, receiver is receiving, both, etc
+            // }
+        }
+	}
         
         private class ToggleListener implements ActionListener {
             @Override
@@ -41,19 +74,28 @@ class Receiver {
             public void actionPerformed(ActionEvent e) {
                 final String bttn = ((JButton) e.getSource()).getText();
                 if (bttn.equals(ReceiverView.this.bttnReceive.getText())) {
-                    setEnabledAll(false);
-
-                    UDPThread socketThread = new UDPThread();
+                    try {
+                        ReceiverView.this.model = new ReceiverModel((int) ReceiverView.this.spnrDataPort.getValue(), ReceiverView.this.txtIPAddress.getText(), (int) ReceiverView.this.spnrACKPort.getValue());
+                        ReceiverView.this.setEnabledAll(false);
+                        ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
+                    } catch (SocketException sEx) {
+                        JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception", JOptionPane.ERROR_MESSAGE);
+                    } catch (UnknownHostException uhEx) {
+                        JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception", JOptionPane.ERROR_MESSAGE);
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 }
                 else {
-                    
+                    ReceiverView.this.model.receiveThread.interrupt();
+                    ReceiverView.this.model.sendThread.interrupt();
                 }
             }
         }
 
         private void setEnabledAll(Boolean status) {
-            txtACKPort.setEnabled(status);
-            txtDataPort.setEnabled(status);
+            spnrACKPort.setEnabled(status);
+            spnrDataPort.setEnabled(status);
             txtFileName.setEnabled(status);
             txtIPAddress.setEnabled(status);
             tglReliability.setEnabled(status);
@@ -88,17 +130,17 @@ class Receiver {
             lblIPAddress.setBounds(10, 10, 80, 20);
             frame.getContentPane().add(lblIPAddress);
             
-            txtDataPort = new JTextField();
-            txtDataPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            txtDataPort.setColumns(10);
-            txtDataPort.setBounds(187, 90, 239, 20);
-            frame.getContentPane().add(txtDataPort);
+            spnrDataPort = new JSpinner();
+            spnrDataPort.setModel(new SpinnerNumberModel(22, 0, 65535, 1));
+            spnrDataPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
+            spnrDataPort.setBounds(187, 90, 239, 20);
+            frame.getContentPane().add(spnrDataPort);
             
-            txtACKPort = new JTextField();
-            txtACKPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            txtACKPort.setColumns(10);
-            txtACKPort.setBounds(187, 50, 239, 20);
-            frame.getContentPane().add(txtACKPort);
+            spnrACKPort = new JSpinner();
+            spnrACKPort.setModel(new SpinnerNumberModel(22, 0, 65535, 1));
+            spnrACKPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
+            spnrACKPort.setBounds(187, 50, 239, 20);
+            frame.getContentPane().add(spnrACKPort);
             
             txtFileName = new JTextField();
             txtFileName.setFont(new Font("Tahoma", Font.PLAIN, 14));
@@ -152,9 +194,10 @@ class Receiver {
          */
         private void registerListeners() {
             ButtonListener actionBttn = new ButtonListener();
-            tglReliability.addActionListener(new ToggleListener());
-            bttnReceive.addActionListener(actionBttn);
-            bttnCancel.addActionListener(actionBttn);
+            this.tglReliability.addActionListener(new ToggleListener());
+            this.bttnReceive.addActionListener(actionBttn);
+            this.bttnCancel.addActionListener(actionBttn);
+
         }
     }
 
@@ -173,11 +216,42 @@ class Receiver {
     }
 
     public static class ReceiverModel {
-        private final Socket receiveSocket;
-        private final Socket sendSocket;
+        private final DatagramSocket receiveSocket;
+        private final DatagramSocket sendSocket;
+        private final UDPThread receiveThread;
+        private final UDPThread sendThread;
 
-        public ReceiverModel(String rServer, int rPort, String sServer, int sPort) {
-            this.receiveSocket = new Socket(rServer, rPort)
+        private Boolean isSending;
+        private int receivedPackets;
+        private final PropertyChangeSupport pcs = new PropertyChangeSupport(this);
+
+        public void addPropertyChangeListener(final PropertyChangeListener listener) {
+            this.pcs.addPropertyChangeListener(listener);
+        }
+        public void addPropertyChangeListener(final String propertyName, final PropertyChangeListener listener) {
+            this.pcs.addPropertyChangeListener(propertyName, listener);
+        }
+        
+        public ReceiverModel(int rPort, String sServer, int sPort) throws SocketException, UnknownHostException {
+            this.receiveSocket = new DatagramSocket(rPort);
+            this.sendSocket = new DatagramSocket(sPort, InetAddress.getByName(sServer));
+            this.receiveThread = new UDPThread(receiveSocket);
+            this.sendThread = new UDPThread(sendSocket);
+
+            this.receivedPackets = 0;
+            this.isSending = false;
+        }
+
+        public int getNumPackets() {
+            return this.receivedPackets;
+        }
+
+        public void receivePacket() {
+            int oldValue = this.receivedPackets;
+            this.receivedPackets++;
+            this.pcs.firePropertyChange("PacketNum", oldValue, this.receivedPackets);
+            // if the packet says sender is done, do something w isSending
+            // if he packet acknowledges receiver is done, do something else
         }
     }
 
