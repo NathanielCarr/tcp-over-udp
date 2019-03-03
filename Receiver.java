@@ -5,6 +5,9 @@ import java.awt.event.ActionListener;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
+import java.io.File;
+import java.nio.file.Path;
+import java.io.IOException;
 import javax.swing.JTextField;
 import javax.swing.JLabel;
 import javax.swing.JSpinner;
@@ -24,6 +27,7 @@ import java.net.UnknownHostException;
 
 class Receiver {
 
+    @SuppressWarnings("serial")
     public static class ReceiverView extends JPanel{
         private ReceiverModel model;
 
@@ -76,7 +80,7 @@ class Receiver {
                 final String bttn = ((JButton) e.getSource()).getText();
                 if (bttn.equals(ReceiverView.this.bttnReceive.getText())) {
                     try {
-                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.tglReliability.isSelected(), (int) ReceiverView.this.spnrDataPort.getValue(), ReceiverView.this.txtIPAddress.getText(), (int) ReceiverView.this.spnrACKPort.getValue());
+                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.tglReliability.isSelected(), ReceiverView.this.txtFileName.getText(), (int) ReceiverView.this.spnrDataPort.getValue(), ReceiverView.this.txtIPAddress.getText(), (int) ReceiverView.this.spnrACKPort.getValue());
                         ReceiverView.this.setEnabledAll(false);
                         ReceiverView.this.bttnCancel.setEnabled(true);
                         ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
@@ -84,6 +88,8 @@ class Receiver {
                         JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception", JOptionPane.ERROR_MESSAGE);
                     } catch (UnknownHostException uhEx) {
                         JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception", JOptionPane.ERROR_MESSAGE);
+                    } catch (IOException IOEx) {
+                        JOptionPane.showMessageDialog(null, IOEx.getMessage() + "\n", "I/O Exception", JOptionPane.ERROR_MESSAGE);
                     } catch (Exception ex) {
                         JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error", JOptionPane.ERROR_MESSAGE);
                     }
@@ -220,10 +226,10 @@ class Receiver {
     }
 
     public static class ReceiverModel {// implements Runnable(?) {
-        private final DatagramSocket receiveSocket;
-        private final DatagramSocket sendSocket;
         private final UDPThread receiveThread;
         private final UDPThread sendThread;
+        private final File writeFile;
+        private final Path path;
         private final Boolean reliability;
         private int tenth;
         private int datagramSize;
@@ -258,6 +264,50 @@ class Receiver {
             }
         }
 
+        public static class Header {
+            private Boolean handshake;
+            private Boolean fin;
+            private Boolean ack;
+            private int seq;
+
+            public Header(boolean handshake, boolean fin, boolean ack, int seq) {
+                this.handshake = handshake;
+                this.fin = fin;
+                this.ack = ack;
+                this.seq = seq == 0 ? 0 : 1;
+            }
+
+            public Header(byte header) {
+                this.handshake = ((header >> 7) & 1) == 1;
+                this.fin = ((header >> 6) & 1) == 1;
+                this.ack = ((header >> 6) & 1) == 1;
+                this.seq = (header >> 6) & 1;
+            }
+
+            public Boolean isHandshake() {
+                return this.handshake;
+            }
+
+            public Boolean isAck() {
+                return this.ack;
+            }
+
+            public Boolean isFin() {
+                return this.fin;
+            }
+
+            public int getSeq() {
+                return this.seq;
+            }
+
+            public byte toByte() {
+                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.fin ? '1' : '0',
+                        this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
+                return (byte) Integer.parseInt(new String(bitArr), 2);
+            }
+
+        }
+
         private sendingStatus sStatus;
         private receivingStatus rStatus;
         private int receivedPackets;
@@ -272,11 +322,9 @@ class Receiver {
             this.pcs.addPropertyChangeListener(propertyName, listener);
         }
         
-        public ReceiverModel(Boolean reliability, int rPort, String sServer, int sPort) throws SocketException, UnknownHostException {
-            this.receiveSocket = new DatagramSocket(rPort);
-            this.sendSocket = new DatagramSocket(sPort, InetAddress.getByName(sServer));
-            this.receiveThread = new UDPThread(receiveSocket);
-            this.sendThread = new UDPThread(sendSocket);
+        public ReceiverModel(Boolean reliability, String fileName, int rPort, String sServer, int sPort) throws SocketException, UnknownHostException, IOException {
+            this.receiveThread = new UDPThread(new DatagramSocket(rPort));
+            this.sendThread = new UDPThread(new DatagramSocket(sPort, InetAddress.getByName(sServer)));
             this.reliability = reliability;
 
             this.sStatus = sendingStatus.FINISHED;
@@ -286,6 +334,9 @@ class Receiver {
 
             this.seqNum = 0;
             this.datagramSize = this.HANDSHAKE_SIZE;
+
+            this.writeFile = new File(fileName);
+            this.path = Paths.get(writeFile.getAbsolutePath());
         }
 
         
@@ -293,10 +344,26 @@ class Receiver {
             return this.receivedPackets;
         }
 
+        private DatagramPacket makeDatagramPacket(Header header, byte[] data) {
+            // add appropriate header to the front of the contents.
+            byte[] contents = new byte[1 + data.length];
+            byte[] headerByteArr = { header.toByte() };
+            System.arraycopy(headerByteArr, 0, contents, 0, 1);
+            System.arraycopy(data, 0, contents, 1, data.length);
+            return new DatagramPacket(contents, contents.length, this.sendThread.socket.getLocalSocketAddress());
+        }
+
         public void receivePacket(DatagramPacket packet) {// packet received successfully
+            
+            // check to make sure it's the right sequence number, fin, ack, etc
             int oldValue = this.receivedPackets;
             this.receivedPackets++;
             this.pcs.firePropertyChange("PacketNum", oldValue, this.receivedPackets);
+
+            this.seqNum = seqNum == 0 ? 1 : 0;
+            // write to file
+            // send ack
+
             // if handshake get the max packet size and store in datagramSize
             // else get rid of any excess info in packet
             // read packet to file
@@ -304,10 +371,9 @@ class Receiver {
             // if he packet acknowledges receiver is done, do something else w rStatus and stop receiving
         }
 
-        @Override
         public void run() {
             try {
-                while ((this.rStatus == this.receivingStatus.Receiving) && (!Thread.interrupted())) {
+                while ((rStatus == receivingStatus.RECEIVING) && (!Thread.interrupted())) {
                     DatagramPacket packet = makeDatagramPacket(new Header(false, false, false, this.seqNum), new byte[this.datagramSize]);
                     this.receiveThread.socket.receive(packet);
                     if (this.reliability || this.tenth != 9) {
@@ -324,6 +390,8 @@ class Receiver {
 
             }
             this.pcs.firePropertyChange(null, true, false); // used to deal with sender finished or sending and receiver finished or receiving
+            this.sendThread.interrupt();
+            this.receiveThread.interrupt();
             return;
 
         }
