@@ -170,7 +170,7 @@ class Sender {
             public byte toByte() {
                 char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.fin ? '1' : '0',
                         this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
-                return (byte) Byte.parseByte(String.valueOf(bitArr), 2);
+                return (byte) Integer.parseInt(new String(bitArr), 2);
             }
 
         }
@@ -202,10 +202,11 @@ class Sender {
 
         private void handshake() throws IOException {
             Boolean acked = false;
+            DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq), new byte[0]);
             do {
                 try {
                     // Send first sequence of handshake.
-                    this.outSocket.send(makeDatagramPacket(new Header(true, false, false, seq), new byte[0]));
+                    this.outSocket.send(packet);
                     acked = false;
 
                     // Receive response from first sequence of handshake.
@@ -267,9 +268,10 @@ class Sender {
         private void endConnection() throws IOException {
             Boolean acked = false;
             // Send fin message and wait for appropriate ACK.
+            DatagramPacket packet = makeDatagramPacket(new Header(false, true, false, seq), new byte[0]);
             do {
                 try {
-                    this.outSocket.send(makeDatagramPacket(new Header(false, true, false, seq), new byte[0]));
+                    this.outSocket.send(packet);
                     acked = false;
 
                     // Receive response from first sequence of end of connection procedure.
@@ -333,8 +335,7 @@ class Sender {
             byte[] headerByteArr = { header.toByte() };
             System.arraycopy(headerByteArr, 0, contents, 0, 1);
             System.arraycopy(data, 0, contents, 1, data.length);
-            return new DatagramPacket(contents, contents.length, this.outSocket.getInetAddress(),
-                    this.outSocket.getPort());
+            return new DatagramPacket(contents, contents.length, this.outSocket.getLocalSocketAddress());
         }
 
         private byte[] extractData(DatagramPacket packet) {
