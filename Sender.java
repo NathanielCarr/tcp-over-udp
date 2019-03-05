@@ -1,25 +1,26 @@
-import java.io.File;
-import java.io.IOException;
-
-import java.nio.file.Files; // Read byte array from file.
-
-import java.net.DatagramSocket;
-import java.net.DatagramPacket;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.net.SocketException;
-import java.net.SocketTimeoutException;
-
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.SwingConstants;
-import javax.swing.JTextField;
-import javax.swing.JButton;
-import javax.swing.JSpinner;
-import javax.swing.SpinnerNumberModel;
-import javax.swing.JOptionPane;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JSpinner;
+import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingConstants;
+import javax.swing.SwingWorker;
+
 class Sender {
 
     public static void main(String[] args) throws IOException {
@@ -51,14 +52,14 @@ class Sender {
                             JOptionPane.ERROR_MESSAGE);
                 } else {
                     try {
-                    InetAddress addr = InetAddress.getByName(txtAddr.getText());
-                    int port = (int) spnPort.getValue();
-                    int myPort = (int) spnMyPort.getValue();
-                    int mds = (int) spnMDS.getValue();
-                    int timeout = (int) spnTimeout.getValue();
-                    File file = new File(txtFile.getText());
-                    
-                        senderThread = new SenderThread(addr, port, myPort, mds, timeout, file);
+                        InetAddress addr = InetAddress.getByName(txtAddr.getText());
+                        int port = (int) spnPort.getValue();
+                        int myPort = (int) spnMyPort.getValue();
+                        int mds = (int) spnMDS.getValue();
+                        int timeout = (int) spnTimeout.getValue();
+                        File file = new File(txtFile.getText());
+
+                        senderThread = new SenderThread(SenderView.this, addr, port, myPort, mds, timeout, file);
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
@@ -75,7 +76,7 @@ class Sender {
                                 "Bad File Path", JOptionPane.ERROR_MESSAGE);
                         return;
                     }
-                    senderThread.start();
+                    senderThread.execute();
                 }
             }
 
@@ -86,6 +87,7 @@ class Sender {
          */
         public SenderView() {
             initialize();
+            registerListeners();
         }
 
         /**
@@ -145,16 +147,16 @@ class Sender {
             lblTimeout.setBounds(10, 136, 162, 20);
             frmRdtSender.getContentPane().add(lblTimeout);
 
-            JButton btnSend = new JButton("Send");
+            btnSend = new JButton("Send");
             btnSend.setBounds(10, 167, 89, 23);
             frmRdtSender.getContentPane().add(btnSend);
 
-            JLabel lblTransTime = new JLabel("");
+            lblTransTime = new JLabel("");
             lblTransTime.setHorizontalAlignment(SwingConstants.LEFT);
             lblTransTime.setBounds(108, 167, 250, 20);
             frmRdtSender.getContentPane().add(lblTransTime);
 
-            JSpinner spnMDS = new JSpinner();
+            spnMDS = new JSpinner();
             spnMDS.setModel(new SpinnerNumberModel(256, 3, 65535, 1));
             spnMDS.setBounds(172, 105, 186, 20);
             frmRdtSender.getContentPane().add(spnMDS);
@@ -164,12 +166,12 @@ class Sender {
             spinner.setBounds(172, 136, 186, 20);
             frmRdtSender.getContentPane().add(spinner);
 
-            JSpinner spnPort = new JSpinner();
+            spnPort = new JSpinner();
             spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
             spnPort.setBounds(172, 27, 88, 20);
             frmRdtSender.getContentPane().add(spnPort);
 
-            JSpinner spnMyPort = new JSpinner();
+            spnMyPort = new JSpinner();
             spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
             spnMyPort.setBounds(270, 27, 88, 20);
             frmRdtSender.getContentPane().add(spnMyPort);
@@ -179,9 +181,13 @@ class Sender {
         private void registerListeners() {
             btnSend.addActionListener(new ButtonListener());
         }
+
+        private void threadComplete() {
+
+        }
     }
 
-    public static class SenderThread extends Thread {
+    public static class SenderThread extends SwingWorker<Void, Void> {
 
         public static class Header {
             private Boolean handshake;
@@ -227,6 +233,7 @@ class Sender {
 
         }
 
+        private SenderView view;
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
         private int mds;
@@ -234,11 +241,14 @@ class Sender {
 
         private byte[] fileBytes;
 
-        public SenderThread(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
+        public SenderThread(SenderView view, InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
 
             // Get the bytes of the provided file.
-            this.fileBytes = Files.readAllBytes(file.toPath());
+            this.fileBytes = new byte[(int) file.length()];
+            FileInputStream fis = new FileInputStream(file);
+            fis.read(this.fileBytes);
+            fis.close();
 
             // Ready output socket.
             this.outSocket = new DatagramSocket(port, addr);
@@ -252,10 +262,27 @@ class Sender {
             this.seq = 0;
         }
 
+        public Void doInBackground() {
+            try {
+                handshake();
+                sendFile();
+                endConnection();
+                this.inSocket.close();
+                this.outSocket.close();
+            } catch (Exception e) {
+                System.out.println(e.toString());
+            }
+            return null;
+        }
+
+        public void done() {
+            view.threadComplete();
+        }
+
         private void handshake() throws IOException {
             Boolean acked = false;
-            byte[] mdsBytes = { (byte) (this.mds >> 8), (byte) this.mds };
-            DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq), mdsBytes);
+            DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq),
+                    ByteBuffer.allocate(2).putShort((short) this.mds).array());
             do {
                 try {
                     // Send first sequence of handshake.
@@ -370,18 +397,6 @@ class Sender {
             }
         }
 
-        public void run() {
-            try {
-                handshake();
-                sendFile();
-                endConnection();
-                this.inSocket.close();
-                this.outSocket.close();
-            } catch (Exception e) {
-                System.out.println(e.toString());
-            }
-        }
-
         private DatagramPacket makeDatagramPacket(Header header, byte[] data) {
             // add appropriate header to the front of the contents.
             byte[] contents = new byte[1 + data.length];
@@ -398,5 +413,4 @@ class Sender {
             return data;
         }
     }
-
 }
