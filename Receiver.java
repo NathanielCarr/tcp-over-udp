@@ -47,26 +47,10 @@ class Receiver {
             @Override
             public void propertyChange(final PropertyChangeEvent evt) {
                 int numP = ReceiverView.this.model.getNumPackets();
-                ReceiverView.this.lblNumReceived.setText(Integer.toString(numP));
-                if (numP > 0 && ReceiverView.this.bttnCancel.isEnabled()) {
-                    ReceiverView.this.bttnCancel.setEnabled(false);
-                }
+                ReceiverView.this.lblReceived.setText(Integer.toString(numP));
                 // if (evt.getPropertyName().equals("SenderReceiverStatus")) {
                 // use to display whether sender is sending, receiver is receiving, both, etc
                 // }
-            }
-        }
-
-        private class ToggleListener implements ActionListener {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (tglReliability.isSelected()) {
-                    tglReliability.setText("Reliable");
-                    // System.out.println("Yay");
-                } else {
-                    tglReliability.setText("Unreliable");
-                    // System.out.println("Nay");
-                }
             }
         }
 
@@ -74,15 +58,14 @@ class Receiver {
             @Override
             public void actionPerformed(ActionEvent e) {
                 final String bttn = ((JButton) e.getSource()).getText();
-                if (bttn.equals(ReceiverView.this.bttnReceive.getText())) {
+                if (bttn.equals(ReceiverView.this.btnReceive.getText())) {
                     try {
-                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.tglReliability.isSelected(),
-                                ReceiverView.this.txtFileName.getText(),
-                                (int) ReceiverView.this.spnrDataPort.getValue(),
-                                ReceiverView.this.txtIPAddress.getText(),
-                                (int) ReceiverView.this.spnrACKPort.getValue());
+                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.chkUnreliable.isSelected(),
+                                ReceiverView.this.txtFile.getText(),
+                                (int) ReceiverView.this.spnPort.getValue(),
+                                ReceiverView.this.txtAddr.getText(),
+                                (int) ReceiverView.this.spnMyPort.getValue());
                         ReceiverView.this.setEnabledAll(false);
-                        ReceiverView.this.bttnCancel.setEnabled(true);
                         ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
                     } catch (SocketException sEx) {
                         JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception",
@@ -105,12 +88,12 @@ class Receiver {
         }
 
         private void setEnabledAll(Boolean status) {
-            spnrACKPort.setEnabled(status);
-            spnrDataPort.setEnabled(status);
-            txtFileName.setEnabled(status);
-            txtIPAddress.setEnabled(status);
-            tglReliability.setEnabled(status);
-            bttnReceive.setEnabled(status);
+            spnMyPort.setEnabled(status);
+            spnPort.setEnabled(status);
+            txtFile.setEnabled(status);
+            txtAddr.setEnabled(status);
+            chkUnreliable.setEnabled(status);
+            btnReceive.setEnabled(status);
         }
 
         /**
@@ -196,9 +179,7 @@ class Receiver {
          */
         private void registerListeners() {
             ButtonListener actionBttn = new ButtonListener();
-            this.tglReliability.addActionListener(new ToggleListener());
-            this.bttnReceive.addActionListener(actionBttn);
-            this.bttnCancel.addActionListener(actionBttn);
+            this.btnReceive.addActionListener(actionBttn);
 
         }
     }
@@ -396,9 +377,7 @@ class Receiver {
     }
 
     public static void main(String[] args) {
-        ReceiverView window = new ReceiverView();
-        window.frame.setVisible(true);
-
+        new ReceiverView().frmRdtReceiver.setVisible(true);
     }
 
 }
