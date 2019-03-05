@@ -1,44 +1,34 @@
-import javax.swing.JFrame;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.io.File;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.io.IOException;
-import javax.swing.JTextField;
-import javax.swing.JLabel;
-import javax.swing.JSpinner;
-import javax.swing.SpinnerNumberModel;
-import java.awt.Font;
-import javax.swing.SwingConstants;
-import javax.swing.JToggleButton;
-import javax.swing.JButton;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import java.net.DatagramSocket;
 import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JSpinner;
+import javax.swing.JTextField;
+import javax.swing.JToggleButton;
+import javax.swing.SwingConstants;
 
 class Receiver {
 
     @SuppressWarnings("serial")
     public static class ReceiverView extends JPanel {
         private ReceiverModel model;
-
-        private JFrame frame;
-        private JTextField txtIPAddress;
-        private JSpinner spnrDataPort;
-        private JSpinner spnrACKPort;
-        private JTextField txtFileName;
-        private JToggleButton tglReliability;
-        private JButton bttnReceive;
-        private JButton bttnCancel;
-        private JLabel lblNumReceived;
 
         private JFrame frmRdtReceiver;
         private JTextField txtAddr;
