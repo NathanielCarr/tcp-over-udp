@@ -54,36 +54,30 @@ class Receiver {
             }
         }
 
-        private class ButtonListener implements ActionListener {
+        private class ReceiveListener implements ActionListener {
             @Override
             public void actionPerformed(ActionEvent e) {
-                final String bttn = ((JButton) e.getSource()).getText();
-                if (bttn.equals(ReceiverView.this.btnReceive.getText())) {
-                    try {
-                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.chkUnreliable.isSelected(),
-                                ReceiverView.this.txtFile.getText(),
-                                (int) ReceiverView.this.spnPort.getValue(),
-                                ReceiverView.this.txtAddr.getText(),
-                                (int) ReceiverView.this.spnMyPort.getValue());
-                        ReceiverView.this.setEnabledAll(false);
-                        ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
-                    } catch (SocketException sEx) {
-                        JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception",
-                                JOptionPane.ERROR_MESSAGE);
-                    } catch (UnknownHostException uhEx) {
-                        JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception",
-                                JOptionPane.ERROR_MESSAGE);
-                    } catch (IOException IOEx) {
-                        JOptionPane.showMessageDialog(null, IOEx.getMessage() + "\n", "I/O Exception",
-                                JOptionPane.ERROR_MESSAGE);
-                    } catch (Exception ex) {
-                        JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error",
-                                JOptionPane.ERROR_MESSAGE);
-                    }
-                } else {
-                    ReceiverView.this.model.receiveThread.interrupt();
-                    ReceiverView.this.model.sendThread.interrupt();
-                }
+                try {
+                    ReceiverView.this.model = new ReceiverModel(ReceiverView.this.chkUnreliable.isSelected(),
+                            ReceiverView.this.txtFile.getText(),
+                            (int) ReceiverView.this.spnPort.getValue(),
+                            ReceiverView.this.txtAddr.getText(),
+                            (int) ReceiverView.this.spnMyPort.getValue());
+                    ReceiverView.this.setEnabledAll(false);
+                    ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
+                } catch (SocketException sEx) {
+                    JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception",
+                            JOptionPane.ERROR_MESSAGE);
+                } catch (UnknownHostException uhEx) {
+                    JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception",
+                            JOptionPane.ERROR_MESSAGE);
+                } catch (IOException IOEx) {
+                    JOptionPane.showMessageDialog(null, IOEx.getMessage() + "\n", "I/O Exception",
+                            JOptionPane.ERROR_MESSAGE);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error",
+                            JOptionPane.ERROR_MESSAGE);
+                } 
             }
         }
 
@@ -178,8 +172,7 @@ class Receiver {
          * Registers listeners where necessary
          */
         private void registerListeners() {
-            ButtonListener actionBttn = new ButtonListener();
-            this.btnReceive.addActionListener(actionBttn);
+            this.btnReceive.addActionListener(new ReceiveListener());
 
         }
     }
