@@ -2,6 +2,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -27,7 +28,7 @@ class Sender {
         new SenderView().frmRdtSender.setVisible(true);
     }
 
-    public static class SenderView {
+    private static class SenderView {
         private JFrame frmRdtSender;
         private JButton btnSend;
         private JTextField txtAddr;
@@ -96,85 +97,85 @@ class Sender {
         private void initialize() {
             frmRdtSender = new JFrame();
             frmRdtSender.setTitle("RDT Sender");
-            frmRdtSender.setBounds(100, 100, 384, 238);
+            frmRdtSender.setBounds(100, 100, 471, 239);
             frmRdtSender.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frmRdtSender.getContentPane().setLayout(null);
 
-            JLabel lblAddr = new JLabel("Receiver IP address:");
-            lblAddr.setHorizontalAlignment(SwingConstants.LEFT);
-            lblAddr.setBounds(10, 11, 152, 14);
-            frmRdtSender.getContentPane().add(lblAddr);
-
             txtAddr = new JTextField();
             txtAddr.setHorizontalAlignment(SwingConstants.RIGHT);
-            txtAddr.setBounds(10, 27, 152, 20);
+            txtAddr.setBounds(10, 27, 191, 20);
             frmRdtSender.getContentPane().add(txtAddr);
             txtAddr.setColumns(10);
 
-            JLabel lblColon = new JLabel(":");
-            lblColon.setHorizontalAlignment(SwingConstants.CENTER);
-            lblColon.setBounds(162, 30, 13, 14);
-            frmRdtSender.getContentPane().add(lblColon);
+            spnPort = new JSpinner();
+            spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
+            spnPort.setBounds(213, 27, 111, 20);
+            frmRdtSender.getContentPane().add(spnPort);
 
-            JLabel lblPort = new JLabel("Port number:");
-            lblPort.setHorizontalAlignment(SwingConstants.LEFT);
-            lblPort.setBounds(173, 11, 81, 14);
-            frmRdtSender.getContentPane().add(lblPort);
-
-            JLabel lblMyPort = new JLabel("My port number:");
-            lblMyPort.setHorizontalAlignment(SwingConstants.LEFT);
-            lblMyPort.setBounds(270, 11, 88, 14);
-            frmRdtSender.getContentPane().add(lblMyPort);
-
-            JLabel lblFile = new JLabel("File to send:");
-            lblFile.setHorizontalAlignment(SwingConstants.LEFT);
-            lblFile.setBounds(10, 58, 138, 14);
-            frmRdtSender.getContentPane().add(lblFile);
+            spnMyPort = new JSpinner();
+            spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
+            spnMyPort.setBounds(334, 27, 111, 20);
+            frmRdtSender.getContentPane().add(spnMyPort);
 
             txtFile = new JTextField();
             txtFile.setHorizontalAlignment(SwingConstants.RIGHT);
             txtFile.setColumns(10);
-            txtFile.setBounds(10, 74, 348, 20);
+            txtFile.setBounds(10, 74, 435, 20);
             frmRdtSender.getContentPane().add(txtFile);
 
-            JLabel lblMDS = new JLabel("Maximum datagram size (bytes):");
-            lblMDS.setHorizontalAlignment(SwingConstants.LEFT);
-            lblMDS.setBounds(10, 105, 162, 20);
-            frmRdtSender.getContentPane().add(lblMDS);
+            spnMDS = new JSpinner();
+            spnMDS.setModel(new SpinnerNumberModel(256, 3, 65535, 1));
+            spnMDS.setBounds(259, 105, 186, 20);
+            frmRdtSender.getContentPane().add(spnMDS);
 
-            JLabel lblTimeout = new JLabel("Timeout (milliseconds):");
-            lblTimeout.setHorizontalAlignment(SwingConstants.LEFT);
-            lblTimeout.setBounds(10, 136, 162, 20);
-            frmRdtSender.getContentPane().add(lblTimeout);
+            spnTimeout = new JSpinner();
+            spnTimeout.setModel(new SpinnerNumberModel(new Integer(10000), new Integer(0), null, new Integer(1)));
+            spnTimeout.setBounds(259, 136, 186, 20);
+            frmRdtSender.getContentPane().add(spnTimeout);
 
             btnSend = new JButton("Send");
             btnSend.setBounds(10, 167, 89, 23);
             frmRdtSender.getContentPane().add(btnSend);
 
-            lblTransTime = new JLabel("");
+            lblTransTime = new JLabel("Transmission time: 0 ms");
             lblTransTime.setHorizontalAlignment(SwingConstants.LEFT);
-            lblTransTime.setBounds(108, 167, 250, 20);
+            lblTransTime.setBounds(109, 167, 336, 20);
             frmRdtSender.getContentPane().add(lblTransTime);
 
-            spnMDS = new JSpinner();
-            spnMDS.setModel(new SpinnerNumberModel(256, 3, 65535, 1));
-            spnMDS.setBounds(172, 105, 186, 20);
-            frmRdtSender.getContentPane().add(spnMDS);
+            JLabel lblAddr = new JLabel("Receiver IP address:");
+            lblAddr.setHorizontalAlignment(SwingConstants.LEFT);
+            lblAddr.setBounds(10, 11, 186, 14);
+            frmRdtSender.getContentPane().add(lblAddr);
 
-            JSpinner spinner = new JSpinner();
-            spinner.setModel(new SpinnerNumberModel(new Integer(10000), new Integer(0), null, new Integer(1)));
-            spinner.setBounds(172, 136, 186, 20);
-            frmRdtSender.getContentPane().add(spinner);
+            JLabel lblColon = new JLabel(":");
+            lblColon.setHorizontalAlignment(SwingConstants.CENTER);
+            lblColon.setBounds(201, 30, 13, 14);
+            frmRdtSender.getContentPane().add(lblColon);
 
-            spnPort = new JSpinner();
-            spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
-            spnPort.setBounds(172, 27, 88, 20);
-            frmRdtSender.getContentPane().add(spnPort);
+            JLabel lblPort = new JLabel("Port number:");
+            lblPort.setHorizontalAlignment(SwingConstants.LEFT);
+            lblPort.setBounds(213, 11, 111, 14);
+            frmRdtSender.getContentPane().add(lblPort);
 
-            spnMyPort = new JSpinner();
-            spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
-            spnMyPort.setBounds(270, 27, 88, 20);
-            frmRdtSender.getContentPane().add(spnMyPort);
+            JLabel lblMyPort = new JLabel("My port number:");
+            lblMyPort.setHorizontalAlignment(SwingConstants.LEFT);
+            lblMyPort.setBounds(334, 11, 111, 14);
+            frmRdtSender.getContentPane().add(lblMyPort);
+
+            JLabel lblFile = new JLabel("File to send:");
+            lblFile.setHorizontalAlignment(SwingConstants.LEFT);
+            lblFile.setBounds(10, 58, 435, 14);
+            frmRdtSender.getContentPane().add(lblFile);
+
+            JLabel lblMDS = new JLabel("Maximum datagram size (bytes):");
+            lblMDS.setHorizontalAlignment(SwingConstants.LEFT);
+            lblMDS.setBounds(10, 105, 244, 20);
+            frmRdtSender.getContentPane().add(lblMDS);
+
+            JLabel lblTimeout = new JLabel("Timeout (milliseconds):");
+            lblTimeout.setHorizontalAlignment(SwingConstants.LEFT);
+            lblTimeout.setBounds(10, 136, 244, 20);
+            frmRdtSender.getContentPane().add(lblTimeout);
 
         }
 
@@ -187,7 +188,7 @@ class Sender {
         }
     }
 
-    public static class SenderThread extends SwingWorker<Void, Void> {
+    private static class SenderThread extends SwingWorker<Void, Void> {
 
         public static class Header {
             private Boolean handshake;
@@ -205,8 +206,8 @@ class Sender {
             public Header(byte header) {
                 this.handshake = ((header >> 7) & 1) == 1;
                 this.fin = ((header >> 6) & 1) == 1;
-                this.ack = ((header >> 6) & 1) == 1;
-                this.seq = (header >> 6) & 1;
+                this.ack = ((header >> 5) & 1) == 1;
+                this.seq = (header >> 4) & 1;
             }
 
             public Boolean isHandshake() {
