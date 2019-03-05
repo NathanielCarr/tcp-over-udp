@@ -1,4 +1,3 @@
-import java.awt.EventQueue;
 import javax.swing.JFrame;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -7,6 +6,7 @@ import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.io.IOException;
 import javax.swing.JTextField;
 import javax.swing.JLabel;
@@ -22,15 +22,13 @@ import java.net.DatagramSocket;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 
 class Receiver {
 
     @SuppressWarnings("serial")
-    public static class ReceiverView extends JPanel{
+    public static class ReceiverView extends JPanel {
         private ReceiverModel model;
-
 
         private JFrame frame;
         private JTextField txtIPAddress;
@@ -42,34 +40,42 @@ class Receiver {
         private JButton bttnCancel;
         private JLabel lblNumReceived;
 
-        /**
-	 * Updates the attributes of the model in the view.
-	 */
-	private class AttributesListener implements PropertyChangeListener {
+        private JFrame frmRdtReceiver;
+        private JTextField txtAddr;
+        private JSpinner spnPort;
+        private JSpinner spnMyPort;
+        private JTextField txtFile;
+        private JCheckBox chkUnreliable;
+        private JButton btnReceive;
+        private JLabel lblReceived;
 
-		@Override
-		public void propertyChange(final PropertyChangeEvent evt) {
-            int numP = ReceiverView.this.model.getNumPackets();
-            ReceiverView.this.lblNumReceived.setText(Integer.toString(numP));
-            if (numP > 0 && ReceiverView.this.bttnCancel.isEnabled()) {
-                ReceiverView.this.bttnCancel.setEnabled(false);
-            }
-            // if (evt.getPropertyName().equals("SenderReceiverStatus")) {
+        /**
+         * Updates the attributes of the model in the view.
+         */
+        private class AttributesListener implements PropertyChangeListener {
+
+            @Override
+            public void propertyChange(final PropertyChangeEvent evt) {
+                int numP = ReceiverView.this.model.getNumPackets();
+                ReceiverView.this.lblNumReceived.setText(Integer.toString(numP));
+                if (numP > 0 && ReceiverView.this.bttnCancel.isEnabled()) {
+                    ReceiverView.this.bttnCancel.setEnabled(false);
+                }
+                // if (evt.getPropertyName().equals("SenderReceiverStatus")) {
                 // use to display whether sender is sending, receiver is receiving, both, etc
-            // }
+                // }
+            }
         }
-	}
-        
+
         private class ToggleListener implements ActionListener {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (tglReliability.isSelected()) {
                     tglReliability.setText("Reliable");
-                    //System.out.println("Yay");
-                }
-                else {
+                    // System.out.println("Yay");
+                } else {
                     tglReliability.setText("Unreliable");
-                    //System.out.println("Nay");
+                    // System.out.println("Nay");
                 }
             }
         }
@@ -80,21 +86,28 @@ class Receiver {
                 final String bttn = ((JButton) e.getSource()).getText();
                 if (bttn.equals(ReceiverView.this.bttnReceive.getText())) {
                     try {
-                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.tglReliability.isSelected(), ReceiverView.this.txtFileName.getText(), (int) ReceiverView.this.spnrDataPort.getValue(), ReceiverView.this.txtIPAddress.getText(), (int) ReceiverView.this.spnrACKPort.getValue());
+                        ReceiverView.this.model = new ReceiverModel(ReceiverView.this.tglReliability.isSelected(),
+                                ReceiverView.this.txtFileName.getText(),
+                                (int) ReceiverView.this.spnrDataPort.getValue(),
+                                ReceiverView.this.txtIPAddress.getText(),
+                                (int) ReceiverView.this.spnrACKPort.getValue());
                         ReceiverView.this.setEnabledAll(false);
                         ReceiverView.this.bttnCancel.setEnabled(true);
                         ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
                     } catch (SocketException sEx) {
-                        JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception",
+                                JOptionPane.ERROR_MESSAGE);
                     } catch (UnknownHostException uhEx) {
-                        JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception",
+                                JOptionPane.ERROR_MESSAGE);
                     } catch (IOException IOEx) {
-                        JOptionPane.showMessageDialog(null, IOEx.getMessage() + "\n", "I/O Exception", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, IOEx.getMessage() + "\n", "I/O Exception",
+                                JOptionPane.ERROR_MESSAGE);
                     } catch (Exception ex) {
-                        JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error",
+                                JOptionPane.ERROR_MESSAGE);
                     }
-                }
-                else {
+                } else {
                     ReceiverView.this.model.receiveThread.interrupt();
                     ReceiverView.this.model.sendThread.interrupt();
                 }
@@ -123,82 +136,71 @@ class Receiver {
          * Initialize the contents of the frame.
          */
         private void initialize() {
-            frame = new JFrame();
-            frame.setBounds(100, 100, 450, 295);
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.getContentPane().setLayout(null);
-            
-            txtIPAddress = new JTextField();
-            txtIPAddress.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            txtIPAddress.setBounds(187, 10, 239, 20);
-            frame.getContentPane().add(txtIPAddress);
-            txtIPAddress.setColumns(10);
-            
-            JLabel lblIPAddress = new JLabel("Sender IP:");
-            lblIPAddress.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            lblIPAddress.setBounds(10, 10, 80, 20);
-            frame.getContentPane().add(lblIPAddress);
-            
-            spnrDataPort = new JSpinner();
-            spnrDataPort.setModel(new SpinnerNumberModel(22, 0, 65535, 1));
-            spnrDataPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            spnrDataPort.setBounds(187, 90, 239, 20);
-            frame.getContentPane().add(spnrDataPort);
-            
-            spnrACKPort = new JSpinner();
-            spnrACKPort.setModel(new SpinnerNumberModel(22, 0, 65535, 1));
-            spnrACKPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            spnrACKPort.setBounds(187, 50, 239, 20);
-            frame.getContentPane().add(spnrACKPort);
-            
-            txtFileName = new JTextField();
-            txtFileName.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            txtFileName.setColumns(10);
-            txtFileName.setBounds(187, 130, 239, 20);
-            frame.getContentPane().add(txtFileName);
-            
-            JLabel lblACKPort = new JLabel("Acknowledgement Port#:");
-            lblACKPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            lblACKPort.setBounds(10, 50, 167, 20);
-            frame.getContentPane().add(lblACKPort);
-            
-            JLabel lblDataPort = new JLabel("Data Port#:");
-            lblDataPort.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            lblDataPort.setBounds(10, 90, 80, 20);
-            frame.getContentPane().add(lblDataPort);
-            
-            JLabel lblFileName = new JLabel("File Name:");
-            lblFileName.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            lblFileName.setBounds(10, 130, 80, 20);
-            frame.getContentPane().add(lblFileName);
-            
-            lblNumReceived = new JLabel("0");
-            lblNumReceived.setHorizontalAlignment(SwingConstants.TRAILING);
-            lblNumReceived.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            lblNumReceived.setBounds(380, 210, 46, 20);
-            frame.getContentPane().add(lblNumReceived);
-            
-            JLabel lblNR = new JLabel("Received In-Order Packets:");
-            lblNR.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            lblNR.setBounds(187, 210, 202, 20);
-            frame.getContentPane().add(lblNR);
-            
-            tglReliability = new JToggleButton("Unreliable");
-            tglReliability.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            tglReliability.setBounds(10, 170, 118, 20);
-            frame.getContentPane().add(tglReliability);
-            
-            bttnCancel = new JButton("Cancel");
-            bttnCancel.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            bttnCancel.setBounds(321, 170, 105, 20);
-            bttnCancel.setEnabled(false);
-            frame.getContentPane().add(bttnCancel);
-            
-            bttnReceive = new JButton("Receive");
-            bttnReceive.setFont(new Font("Tahoma", Font.PLAIN, 14));
-            bttnReceive.setBounds(187, 170, 105, 20);
-            frame.getContentPane().add(bttnReceive);
+            frmRdtReceiver = new JFrame();
+            frmRdtReceiver.setTitle("RDT Receiver");
+            frmRdtReceiver.setBounds(100, 100, 474, 201);
+            frmRdtReceiver.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frmRdtReceiver.getContentPane().setLayout(null);
+
+            txtAddr = new JTextField();
+            txtAddr.setHorizontalAlignment(SwingConstants.RIGHT);
+            txtAddr.setColumns(10);
+            txtAddr.setBounds(10, 27, 191, 20);
+            frmRdtReceiver.getContentPane().add(txtAddr);
+
+            spnPort = new JSpinner();
+            spnPort.setBounds(213, 27, 111, 20);
+            frmRdtReceiver.getContentPane().add(spnPort);
+
+            spnMyPort = new JSpinner();
+            spnMyPort.setBounds(334, 27, 111, 20);
+            frmRdtReceiver.getContentPane().add(spnMyPort);
+
+            txtFile = new JTextField();
+            txtFile.setHorizontalAlignment(SwingConstants.RIGHT);
+            txtFile.setColumns(10);
+            txtFile.setBounds(10, 74, 435, 20);
+            frmRdtReceiver.getContentPane().add(txtFile);
+
+            chkUnreliable = new JCheckBox("Unreliable");
+            chkUnreliable.setBounds(10, 105, 435, 23);
+            frmRdtReceiver.getContentPane().add(chkUnreliable);
+
+            btnReceive = new JButton("Receive");
+            btnReceive.setBounds(10, 132, 89, 23);
+            frmRdtReceiver.getContentPane().add(btnReceive);
+
+            lblReceived = new JLabel("Received in-order packets: 0");
+            lblReceived.setHorizontalAlignment(SwingConstants.LEFT);
+            lblReceived.setBounds(109, 133, 336, 20);
+            frmRdtReceiver.getContentPane().add(lblReceived);
+
+            JLabel lblFile = new JLabel("File to write to:");
+            lblFile.setHorizontalAlignment(SwingConstants.LEFT);
+            lblFile.setBounds(10, 58, 435, 14);
+            frmRdtReceiver.getContentPane().add(lblFile);
+
+            JLabel lblAddr = new JLabel("Receiver IP address:");
+            lblAddr.setHorizontalAlignment(SwingConstants.LEFT);
+            lblAddr.setBounds(10, 11, 186, 14);
+            frmRdtReceiver.getContentPane().add(lblAddr);
+
+            JLabel lblPort = new JLabel("Port number:");
+            lblPort.setHorizontalAlignment(SwingConstants.LEFT);
+            lblPort.setBounds(213, 11, 111, 14);
+            frmRdtReceiver.getContentPane().add(lblPort);
+
+            JLabel lblColon = new JLabel(":");
+            lblColon.setHorizontalAlignment(SwingConstants.CENTER);
+            lblColon.setBounds(201, 30, 13, 14);
+            frmRdtReceiver.getContentPane().add(lblColon);
+
+            JLabel lblMyPort = new JLabel("My port number:");
+            lblMyPort.setHorizontalAlignment(SwingConstants.LEFT);
+            lblMyPort.setBounds(334, 11, 111, 14);
+            frmRdtReceiver.getContentPane().add(lblMyPort);
         }
+
         /**
          * Registers listeners where necessary
          */
@@ -213,7 +215,7 @@ class Receiver {
 
     private static class UDPThread extends Thread {
         private final DatagramSocket socket;
-        
+
         public UDPThread(DatagramSocket s) {
             this.socket = s;
         }
@@ -236,8 +238,7 @@ class Receiver {
         private final int HANDSHAKE_SIZE = 3;
 
         public enum sendingStatus {
-            FINISHED("Finished"), 
-            SENDING("Sending");
+            FINISHED("Finished"), SENDING("Sending");
             private final String statusString;
 
             sendingStatus(final String statusString) {
@@ -249,9 +250,9 @@ class Receiver {
                 return this.statusString;
             }
         }
+
         public enum receivingStatus {
-            RECEIVING("Receiving"), 
-            FINISHED("Finished");
+            RECEIVING("Receiving"), FINISHED("Finished");
             private final String statusString;
 
             receivingStatus(final String statusString) {
@@ -318,11 +319,13 @@ class Receiver {
         public void addPropertyChangeListener(final PropertyChangeListener listener) {
             this.pcs.addPropertyChangeListener(listener);
         }
+
         public void addPropertyChangeListener(final String propertyName, final PropertyChangeListener listener) {
             this.pcs.addPropertyChangeListener(propertyName, listener);
         }
-        
-        public ReceiverModel(Boolean reliability, String fileName, int rPort, String sServer, int sPort) throws SocketException, UnknownHostException, IOException {
+
+        public ReceiverModel(Boolean reliability, String fileName, int rPort, String sServer, int sPort)
+                throws SocketException, UnknownHostException, IOException {
             this.receiveThread = new UDPThread(new DatagramSocket(rPort));
             this.sendThread = new UDPThread(new DatagramSocket(sPort, InetAddress.getByName(sServer)));
             this.reliability = reliability;
@@ -339,7 +342,6 @@ class Receiver {
             this.path = Paths.get(writeFile.getAbsolutePath());
         }
 
-        
         public int getNumPackets() {
             return this.receivedPackets;
         }
@@ -354,7 +356,7 @@ class Receiver {
         }
 
         public void receivePacket(DatagramPacket packet) {// packet received successfully
-            
+
             // check to make sure it's the right sequence number, fin, ack, etc
             int oldValue = this.receivedPackets;
             this.receivedPackets++;
@@ -368,14 +370,19 @@ class Receiver {
             // else get rid of any excess info in packet
             // read packet to file
             // if the packet says sender is done, do something w sStatus and send ack
-            // if he packet acknowledges receiver is done, do something else w rStatus and stop receiving
+            // if he packet acknowledges receiver is done, do something else w rStatus and
+            // stop receiving
         }
 
         public void run() {
             try {
                 while ((rStatus == receivingStatus.RECEIVING) && (!Thread.interrupted())) {
-                    DatagramPacket packet = makeDatagramPacket(new Header(false, false, false, this.seqNum), new byte[this.datagramSize]);
-                    this.receiveThread.socket.receive(packet);
+                    DatagramPacket packet = makeDatagramPacket(new Header(false, false, false, this.seqNum),
+                            new byte[this.datagramSize]);
+                    try {
+                        this.receiveThread.socket.receive(packet);
+                    } catch (Exception e) {
+                    }
                     if (this.reliability || this.tenth != 9) {
                         receivePacket(packet);
                         if (!this.reliability) {
@@ -389,7 +396,8 @@ class Receiver {
             } catch (InterruptedException e) {
 
             }
-            this.pcs.firePropertyChange(null, true, false); // used to deal with sender finished or sending and receiver finished or receiving
+            this.pcs.firePropertyChange(null, true, false); // used to deal with sender finished or sending and receiver
+                                                            // finished or receiving
             this.sendThread.interrupt();
             this.receiveThread.interrupt();
             return;
@@ -398,7 +406,7 @@ class Receiver {
     }
 
     public static void main(String[] args) {
-		ReceiverView window = new ReceiverView();
+        ReceiverView window = new ReceiverView();
         window.frame.setVisible(true);
 
     }
