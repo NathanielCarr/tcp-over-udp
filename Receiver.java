@@ -13,8 +13,6 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.nio.ByteBuffer;
@@ -26,7 +24,6 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
-import javax.swing.JToggleButton;
 import javax.swing.SwingConstants;
 
 class Receiver {
@@ -308,7 +305,7 @@ class Receiver {
             return data;
         }
 
-        public void receivePacket(DatagramPacket packet) {// packet received successfully
+        public void receivePacket(DatagramPacket packet) throws IOException {// packet received successfully
 
             // check to make sure it's the right sequence number, eof, ack, etc
             Header packetHeader = new Header(packet.getData()[0]);
@@ -321,8 +318,9 @@ class Receiver {
                 if (this.handshake) {
                     this.datagramSize = (int) ByteBuffer.wrap(data).getShort();
                 }
-                // else if (this.eof) { // refers to eof in recent packet
-                // } // Nothing new happens here ackPac is still correct
+                else if (this.eof) { // refers to eof in recent packet
+                    this.rStatus = Status.FINISHED;
+                }
                 else {
                     for (byte b : data) {
                         this.fileByteList.add(b);
@@ -332,11 +330,11 @@ class Receiver {
                 this.receivedPackets++;
                 this.pcs.firePropertyChange("PacketNum", oldValue, this.receivedPackets);
                 this.seqNum = seqNum == 0 ? 1 : 0;
-            } else if (this.eof) { // reffers to receiver eof before packet header processed
+            } // else if (this.eof) { // reffers to receiver eof before packet header processed
                 // where the problem lays
                 // change status here if condition
                 // still works if sender resent prev packet
-            }
+            // } Zima said unnesesary because is one way
             
             if (this.rStatus == Status.RECEIVING) {
                 ackPac = makeDatagramPacket(new Header(this.handshake, this.eof, true, this.seqNum), new byte[0]);
@@ -366,7 +364,12 @@ class Receiver {
                     } catch (Exception e) {
                     }
                     if (this.reliability || this.tenth != 9) {
-                        receivePacket(packet);
+                        try{
+                            receivePacket(packet);
+                        } catch (IOException IOEx) {
+                            JOptionPane.showMessageDialog(null, "Could not parse packet\n" + IOEx.getMessage() + "\n", "I/O Exception",
+                                    JOptionPane.ERROR_MESSAGE);
+                        }
                         if (!this.reliability) {
                             this.tenth++;
                         }
@@ -379,7 +382,13 @@ class Receiver {
                 for (int i = 0; i < fileByteArr.length; i++) {
                     fileByteArr[i] = fileByteList.get(i);
                 }
-                writeToFile(fileByteArr);
+
+                try {
+                    writeToFile(fileByteArr);
+                } catch (IOException IOEx) {
+                    JOptionPane.showMessageDialog(null, "Could not write to file\n" + IOEx.getMessage() + "\n", "I/O Exception",
+                            JOptionPane.ERROR_MESSAGE);
+                }
             } catch (InterruptedException e) {
 
             }
