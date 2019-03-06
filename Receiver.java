@@ -1,9 +1,12 @@
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -12,7 +15,9 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.nio.ByteBuffer;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JFrame;
@@ -28,7 +33,7 @@ class Receiver {
 
     @SuppressWarnings("serial")
     public static class ReceiverView extends JPanel {
-        private ReceiverModel model;
+        private ReceiverThread model;
 
         private JFrame frmRdtReceiver;
         private JTextField txtAddr;
@@ -39,6 +44,15 @@ class Receiver {
         private JButton btnReceive;
         private JLabel lblReceived;
 
+
+        private class CloseListener implements WindowAdapter {
+            @Override
+            public void windowClosing(WindowEvent e){
+                ReceiverView.this.model.rStatus = ReceiverView.this.model.Status.FINISHED;
+                e.getWindow().dispose();
+            }
+        }
+
         /**
          * Updates the attributes of the model in the view.
          */
@@ -47,10 +61,7 @@ class Receiver {
             @Override
             public void propertyChange(final PropertyChangeEvent evt) {
                 int numP = ReceiverView.this.model.getNumPackets();
-                ReceiverView.this.lblReceived.setText(Integer.toString(numP));
-                // if (evt.getPropertyName().equals("SenderReceiverStatus")) {
-                // use to display whether sender is sending, receiver is receiving, both, etc
-                // }
+                ReceiverView.this.lblReceived.setText("Received in-order packets: " + Integer.toString(numP));
             }
         }
 
@@ -58,7 +69,7 @@ class Receiver {
             @Override
             public void actionPerformed(ActionEvent e) {
                 try {
-                    ReceiverView.this.model = new ReceiverModel(ReceiverView.this.chkUnreliable.isSelected(),
+                    ReceiverView.this.model = new ReceiverThread(ReceiverView.this.chkUnreliable.isSelected(),
                             ReceiverView.this.txtFile.getText(),
                             (int) ReceiverView.this.spnPort.getValue(),
                             ReceiverView.this.txtAddr.getText(),
@@ -142,17 +153,17 @@ class Receiver {
             lblReceived.setBounds(109, 133, 336, 20);
             frmRdtReceiver.getContentPane().add(lblReceived);
 
-            JLabel lblFile = new JLabel("File to write to:");
+            JLabel lblFile = new JLabel("File name:");
             lblFile.setHorizontalAlignment(SwingConstants.LEFT);
             lblFile.setBounds(10, 58, 435, 14);
             frmRdtReceiver.getContentPane().add(lblFile);
 
-            JLabel lblAddr = new JLabel("Receiver IP address:");
+            JLabel lblAddr = new JLabel("Sender IP address:");
             lblAddr.setHorizontalAlignment(SwingConstants.LEFT);
             lblAddr.setBounds(10, 11, 186, 14);
             frmRdtReceiver.getContentPane().add(lblAddr);
 
-            JLabel lblPort = new JLabel("Port number:");
+            JLabel lblPort = new JLabel("Sender port:");
             lblPort.setHorizontalAlignment(SwingConstants.LEFT);
             lblPort.setBounds(213, 11, 111, 14);
             frmRdtReceiver.getContentPane().add(lblPort);
@@ -162,7 +173,7 @@ class Receiver {
             lblColon.setBounds(201, 30, 13, 14);
             frmRdtReceiver.getContentPane().add(lblColon);
 
-            JLabel lblMyPort = new JLabel("My port number:");
+            JLabel lblMyPort = new JLabel("Receiver port:");
             lblMyPort.setHorizontalAlignment(SwingConstants.LEFT);
             lblMyPort.setBounds(334, 11, 111, 14);
             frmRdtReceiver.getContentPane().add(lblMyPort);
@@ -173,53 +184,27 @@ class Receiver {
          */
         private void registerListeners() {
             this.btnReceive.addActionListener(new ReceiveListener());
-
+            this.addWindowListener();
         }
     }
 
-    private static class UDPThread extends Thread {
-        private final DatagramSocket socket;
-
-        public UDPThread(DatagramSocket s) {
-            this.socket = s;
-        }
-
-        @Override
-        public void interrupt() {
-            super.interrupt();
-            this.socket.close();
-        }
-    }
-
-    public static class ReceiverModel {// implements Runnable(?) {
-        private final UDPThread receiveThread;
-        private final UDPThread sendThread;
+    public static class ReceiverThread implements Runnable {
+        private final DatagramSocket receiveSocket;
+        private final DatagramSocket sendSocket;
         private final File writeFile;
-        private final Path path;
+        private List<Byte> fileByteList;
         private final Boolean reliability;
         private int tenth;
         private int datagramSize;
         private final int HANDSHAKE_SIZE = 3;
+        private Boolean handshake;
+        private Boolean eof;
 
-        public enum sendingStatus {
-            FINISHED("Finished"), SENDING("Sending");
-            private final String statusString;
-
-            sendingStatus(final String statusString) {
-                this.statusString = statusString;
-            }
-
-            @Override
-            public String toString() {
-                return this.statusString;
-            }
-        }
-
-        public enum receivingStatus {
+        public enum Status {
             RECEIVING("Receiving"), FINISHED("Finished");
             private final String statusString;
 
-            receivingStatus(final String statusString) {
+            Status(final String statusString) {
                 this.statusString = statusString;
             }
 
@@ -231,20 +216,20 @@ class Receiver {
 
         public static class Header {
             private Boolean handshake;
-            private Boolean fin;
+            private Boolean eof;
             private Boolean ack;
             private int seq;
 
-            public Header(boolean handshake, boolean fin, boolean ack, int seq) {
+            public Header(boolean handshake, boolean eof, boolean ack, int seq) {
                 this.handshake = handshake;
-                this.fin = fin;
+                this.eof = eof;
                 this.ack = ack;
                 this.seq = seq == 0 ? 0 : 1;
             }
 
             public Header(byte header) {
                 this.handshake = ((header >> 7) & 1) == 1;
-                this.fin = ((header >> 6) & 1) == 1;
+                this.eof = ((header >> 6) & 1) == 1;
                 this.ack = ((header >> 6) & 1) == 1;
                 this.seq = (header >> 6) & 1;
             }
@@ -258,7 +243,7 @@ class Receiver {
             }
 
             public Boolean isFin() {
-                return this.fin;
+                return this.eof;
             }
 
             public int getSeq() {
@@ -266,15 +251,14 @@ class Receiver {
             }
 
             public byte toByte() {
-                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.fin ? '1' : '0',
+                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.eof ? '1' : '0',
                         this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
                 return (byte) Integer.parseInt(new String(bitArr), 2);
             }
 
         }
 
-        private sendingStatus sStatus;
-        private receivingStatus rStatus;
+        public Status rStatus;
         private int receivedPackets;
         private final PropertyChangeSupport pcs = new PropertyChangeSupport(this);
 
@@ -288,14 +272,13 @@ class Receiver {
             this.pcs.addPropertyChangeListener(propertyName, listener);
         }
 
-        public ReceiverModel(Boolean reliability, String fileName, int rPort, String sServer, int sPort)
+        public ReceiverThread(Boolean reliability, String fileName, int rPort, String sServer, int sPort)
                 throws SocketException, UnknownHostException, IOException {
-            this.receiveThread = new UDPThread(new DatagramSocket(rPort));
-            this.sendThread = new UDPThread(new DatagramSocket(sPort, InetAddress.getByName(sServer)));
+            this.receiveSocket = new DatagramSocket(rPort);
+            this.sendSocket = new DatagramSocket(sPort, InetAddress.getByName(sServer));
             this.reliability = reliability;
 
-            this.sStatus = sendingStatus.FINISHED;
-            this.rStatus = receivingStatus.RECEIVING;
+            this.rStatus = Status.RECEIVING;
             this.receivedPackets = 0;
             this.tenth = 0;
 
@@ -303,7 +286,6 @@ class Receiver {
             this.datagramSize = this.HANDSHAKE_SIZE;
 
             this.writeFile = new File(fileName);
-            this.path = Paths.get(writeFile.getAbsolutePath());
         }
 
         public int getNumPackets() {
@@ -316,35 +298,71 @@ class Receiver {
             byte[] headerByteArr = { header.toByte() };
             System.arraycopy(headerByteArr, 0, contents, 0, 1);
             System.arraycopy(data, 0, contents, 1, data.length);
-            return new DatagramPacket(contents, contents.length, this.sendThread.socket.getLocalSocketAddress());
+            return new DatagramPacket(contents, contents.length, this.sendSocket.getLocalSocketAddress());
+        }
+
+        private byte[] extractData(DatagramPacket packet) {
+            byte[] contents = packet.getData();
+            byte[] data = new byte[contents.length - 1];
+            System.arraycopy(contents, 1, data, 0, contents.length - 1);
+            return data;
         }
 
         public void receivePacket(DatagramPacket packet) {// packet received successfully
 
-            // check to make sure it's the right sequence number, fin, ack, etc
-            int oldValue = this.receivedPackets;
-            this.receivedPackets++;
-            this.pcs.firePropertyChange("PacketNum", oldValue, this.receivedPackets);
+            // check to make sure it's the right sequence number, eof, ack, etc
+            Header packetHeader = new Header(packet.getData()[0]);
+            byte[] data;
+            DatagramPacket ackPac;
+            if (packetHeader.getSeq() == this.seqNum && !this.eof) {
+                this.handshake = packetHeader.isHandshake();
+                this.eof = packetHeader.isFin();
+                data = extractData(packet);
+                if (this.handshake) {
+                    this.datagramSize = (int) ByteBuffer.wrap(data).getShort();
+                }
+                // else if (this.eof) { // refers to eof in recent packet
+                // } // Nothing new happens here ackPac is still correct
+                else {
+                    for (byte b : data) {
+                        this.fileByteList.add(b);
+                    }
+                }
+                int oldValue = this.receivedPackets;
+                this.receivedPackets++;
+                this.pcs.firePropertyChange("PacketNum", oldValue, this.receivedPackets);
+                this.seqNum = seqNum == 0 ? 1 : 0;
+            } else if (this.eof) { // reffers to receiver eof before packet header processed
+                // where the problem lays
+                // change status here if condition
+                // still works if sender resent prev packet
+            }
+            
+            if (this.rStatus == Status.RECEIVING) {
+                ackPac = makeDatagramPacket(new Header(this.handshake, this.eof, true, this.seqNum), new byte[0]);
+                this.sendSocket.send(ackPac);
+            }
+        
+        }
 
-            this.seqNum = seqNum == 0 ? 1 : 0;
-            // write to file
-            // send ack
-
-            // if handshake get the max packet size and store in datagramSize
-            // else get rid of any excess info in packet
-            // read packet to file
-            // if the packet says sender is done, do something w sStatus and send ack
-            // if he packet acknowledges receiver is done, do something else w rStatus and
-            // stop receiving
+        public void writeToFile(byte[] fileByteArr) throws IOException {
+            writeFile.getParentFile().mkdirs();
+            writeFile.createNewFile();
+            FileOutputStream fos = new FileOutputStream(writeFile, false);
+            fos.write(fileByteArr);
+            fos.close();
         }
 
         public void run() {
             try {
-                while ((rStatus == receivingStatus.RECEIVING) && (!Thread.interrupted())) {
-                    DatagramPacket packet = makeDatagramPacket(new Header(false, false, false, this.seqNum),
-                            new byte[this.datagramSize]);
+                byte[] receiveBuff;
+                DatagramPacket packet;
+                this.fileByteList = new ArrayList<Byte>();
+                while ((rStatus == Status.RECEIVING) && (!Thread.interrupted())) {
+                    receiveBuff = new byte[this.datagramSize];
+                    packet = new DatagramPacket(receiveBuff, this.datagramSize);
                     try {
-                        this.receiveThread.socket.receive(packet);
+                        this.receiveSocket.receive(packet);
                     } catch (Exception e) {
                     }
                     if (this.reliability || this.tenth != 9) {
@@ -357,13 +375,17 @@ class Receiver {
                     }
                     Thread.sleep(1000);
                 }
+                byte[] fileByteArr = new byte[this.fileByteList.size()];
+                for (int i = 0; i < fileByteArr.length; i++) {
+                    fileByteArr[i] = fileByteList.get(i);
+                }
+                writeToFile(fileByteArr);
             } catch (InterruptedException e) {
 
             }
-            this.pcs.firePropertyChange(null, true, false); // used to deal with sender finished or sending and receiver
-                                                            // finished or receiving
-            this.sendThread.interrupt();
-            this.receiveThread.interrupt();
+            this.pcs.firePropertyChange(null, true, false); // used to deal with receiver eofished
+            this.sendSocket.close();
+            this.receiveSocket.close();
             return;
 
         }
