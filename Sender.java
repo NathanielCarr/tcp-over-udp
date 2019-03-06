@@ -39,7 +39,7 @@ class Sender {
         private JSpinner spnMDS;
         private JSpinner spnTimeout;
 
-        private SenderThread senderThread = null;
+        private SenderWorker SenderWorker = null;
 
         private class ButtonListener implements ActionListener {
 
@@ -60,7 +60,7 @@ class Sender {
                         int timeout = (int) spnTimeout.getValue();
                         File file = new File(txtFile.getText());
 
-                        senderThread = new SenderThread(SenderView.this, addr, port, myPort, mds, timeout, file);
+                        SenderWorker = new SenderWorker(SenderView.this, addr, port, myPort, mds, timeout, file);
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
@@ -77,7 +77,7 @@ class Sender {
                                 "Bad File Path", JOptionPane.ERROR_MESSAGE);
                         return;
                     }
-                    senderThread.execute();
+                    SenderWorker.execute();
                 }
             }
 
@@ -188,7 +188,7 @@ class Sender {
         }
     }
 
-    private static class SenderThread extends SwingWorker<Void, Void> {
+    private static class SenderWorker extends SwingWorker<Void, Void> {
 
         public static class Header {
             private Boolean handshake;
@@ -242,7 +242,7 @@ class Sender {
 
         private byte[] fileBytes;
 
-        public SenderThread(SenderView view, InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
+        public SenderWorker(SenderView view, InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
 
             // Get the bytes of the provided file.
