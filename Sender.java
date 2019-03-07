@@ -2,7 +2,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -39,13 +38,13 @@ class Sender {
         private JSpinner spnMDS;
         private JSpinner spnTimeout;
 
-        private SenderWorker SenderWorker = null;
+        private SenderWorker senderWorker = null;
 
         private class ButtonListener implements ActionListener {
 
             @Override
             public void actionPerformed(ActionEvent evt) {
-                if (!txtAddr.getText().matches("[0-9\\.]+")) {
+                if (!txtAddr.getText().matches("[0-9\\.]+") && !txtAddr.getText().toUpperCase().equals("LOCALHOST")) {
                     JOptionPane.showMessageDialog(null, "An IP address can only contain digits and '.'.",
                             "Invalid IP Address", JOptionPane.ERROR_MESSAGE);
                 } else if (txtFile.getText() == "") {
@@ -60,7 +59,7 @@ class Sender {
                         int timeout = (int) spnTimeout.getValue();
                         File file = new File(txtFile.getText());
 
-                        SenderWorker = new SenderWorker(SenderView.this, addr, port, myPort, mds, timeout, file);
+                        senderWorker = new SenderWorker(SenderView.this, addr, port, myPort, mds, timeout, file);
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
@@ -77,7 +76,7 @@ class Sender {
                                 "Bad File Path", JOptionPane.ERROR_MESSAGE);
                         return;
                     }
-                    SenderWorker.execute();
+                    senderWorker.execute();
                 }
             }
 
@@ -137,7 +136,7 @@ class Sender {
             btnSend.setBounds(10, 167, 89, 23);
             frmRdtSender.getContentPane().add(btnSend);
 
-            lblTransTime = new JLabel("Transmission time: 0 ms");
+            lblTransTime = new JLabel("Transmission time: ...");
             lblTransTime.setHorizontalAlignment(SwingConstants.LEFT);
             lblTransTime.setBounds(109, 167, 336, 20);
             frmRdtSender.getContentPane().add(lblTransTime);
@@ -183,8 +182,8 @@ class Sender {
             btnSend.addActionListener(new ButtonListener());
         }
 
-        private void threadComplete() {
-
+        public void threadComplete(long elapsedTime) {
+            lblTransTime.setText(String.format("Transmission time: %l ms", elapsedTime / 1000));
         }
     }
 
@@ -237,13 +236,19 @@ class Sender {
         private SenderView view;
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
+        private InetAddress addr;
+        private int port;
         private int mds;
         private int seq;
 
         private byte[] fileBytes;
 
+        private long startTime;
+
         public SenderWorker(SenderView view, InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
+
+            this.startTime = System.nanoTime();
 
             // Get the bytes of the provided file.
             this.fileBytes = new byte[(int) file.length()];
@@ -252,7 +257,9 @@ class Sender {
             fis.close();
 
             // Ready output socket.
-            this.outSocket = new DatagramSocket(port, addr);
+            this.addr = addr;
+            this.port = port;
+            this.outSocket = new DatagramSocket();
             this.outSocket.setSoTimeout(timeoutMs);
 
             // Ready input socket.
@@ -277,7 +284,7 @@ class Sender {
         }
 
         public void done() {
-            view.threadComplete();
+            view.threadComplete(System.nanoTime() - startTime);
         }
 
         private void handshake() throws IOException {
@@ -404,14 +411,8 @@ class Sender {
             byte[] headerByteArr = { header.toByte() };
             System.arraycopy(headerByteArr, 0, contents, 0, 1);
             System.arraycopy(data, 0, contents, 1, data.length);
-            return new DatagramPacket(contents, contents.length, this.outSocket.getLocalSocketAddress());
+            return new DatagramPacket(contents, contents.length, this.addr, this.port);
         }
 
-        private byte[] extractData(DatagramPacket packet) {
-            byte[] contents = packet.getData();
-            byte[] data = new byte[contents.length - 1];
-            System.arraycopy(contents, 1, data, 0, contents.length - 1);
-            return data;
-        }
     }
 }
