@@ -101,12 +101,12 @@ class Receiver2 {
             frmRdtReceiver.getContentPane().add(txtAddr);
 
             spnPort = new JSpinner();
-            spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
+            spnPort.setModel(new SpinnerNumberModel(9898, 0, 65535, 1));
             spnPort.setBounds(213, 27, 111, 20);
             frmRdtReceiver.getContentPane().add(spnPort);
 
             spnMyPort = new JSpinner();
-            spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
+            spnMyPort.setModel(new SpinnerNumberModel(9897, 0, 65535, 1));
             spnMyPort.setBounds(334, 27, 111, 20);
             frmRdtReceiver.getContentPane().add(spnMyPort);
 
