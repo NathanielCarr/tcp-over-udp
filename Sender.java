@@ -264,6 +264,7 @@ class Sender {
 
             // Ready input socket.
             this.inSocket = new DatagramSocket(myPort);
+            this.inSocket.setSoTimeout(timeoutMs);
 
             // Set seq to 0.
             this.seq = 0;
@@ -280,6 +281,7 @@ class Sender {
                 endConnection();
                 this.inSocket.close();
                 this.outSocket.close();
+                System.out.println("DONE!");
             } catch (Exception e) {
                 System.out.println(e.toString());
             }
@@ -295,6 +297,7 @@ class Sender {
             Boolean acked = false;
             DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq),
                     ByteBuffer.allocate(2).putShort((short) this.mds).array());
+                    
             do {
                 try {
                     // Send first sequence of handshake.
@@ -310,7 +313,7 @@ class Sender {
                     System.out.println(String.format("Received packet (in handshake)."));
 
                     // Check for ACK & handshake bit.
-                    acked = (inHeader.isHandshake() && inHeader.isAck());
+                    acked = (inHeader.isHandshake() && inHeader.isAck() && inHeader.getSeq() == seq);
 
                 } catch (SocketTimeoutException e) {
                     System.out.println(e.toString());

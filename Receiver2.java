@@ -211,7 +211,7 @@ class Receiver2 {
 
         }
 
-        static final int DROP_AT = 9;
+        static final int DROP_AT = 10;
 
         private FileOutputStream fos;
         private ReceiverView view;
@@ -277,11 +277,11 @@ class Receiver2 {
                 inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                 inSocket.receive(inPacket);
                 inHeader = new Header(inPacket.getData()[0]);
-                dropCounter = (dropCounter + 1) % DROP_AT;
+                dropCounter = ++dropCounter % DROP_AT;
                 System.out.println(String.format("R: Received packet (in handshake)."));
 
                 // Send ACK and set MDS appropriately.
-                if (inHeader.isHandshake() && (dropCounter != DROP_AT || reliable)) {
+                if (inHeader.isHandshake() && (dropCounter != 0 || reliable)) {
                     mds = (int) ByteBuffer.wrap(extractData(inPacket)).getShort();
                     outSocket.send(makeDatagramPacket(new Header(true, false, true, inHeader.getSeq()), new byte[0]));
                     view.updateReceivedLabel(++numPackets);
@@ -304,10 +304,12 @@ class Receiver2 {
                 }
 
                 // Send ACK for last packet received.
-                if (dropCounter != DROP_AT || reliable) {
+                if (dropCounter != 0 || reliable) {
                     outSocket.send(makeDatagramPacket(new Header(false, false, true, inHeader.getSeq()), new byte[0]));
                     view.updateReceivedLabel(++numPackets);
                     System.out.println(String.format("R: Sent packet (in receiveFile)."));
+                } else {
+                    System.out.println(String.format("R: Dropped packet (in receiveFile)."));
                 }
 
                 // Get next packet.
@@ -316,15 +318,18 @@ class Receiver2 {
                 inSocket.receive(inPacket);
                 inHeader = new Header(inPacket.getData()[0]);
                 dropCounter = (dropCounter + 1) % DROP_AT;
-                System.out.println(String.format("R: Received packet (in sendFile)."));
+                System.out.println(String.format("R: Received packet (in receiveFile)."));
 
-            } while (!inHeader.isFin() && inHeader.getSeq() == seq);
+            } while (!inHeader.isFin());
 
             // Send ACK of FIN + own FIN.
-            if (dropCounter != DROP_AT || reliable) {
+            if (dropCounter != 0 || reliable) {
                 outSocket.send(makeDatagramPacket(new Header(false, true, true, inHeader.getSeq()), new byte[0]));
                 view.updateReceivedLabel(++numPackets);
                 System.out.println(String.format("R: Sent packet (in endConnection)."));
+            } else {
+                dropCounter = ++dropCounter % DROP_AT;
+                System.out.println(String.format("R: Dropped packet (in endConnection)."));
             }
 
             view.updateReceivedLabel(++numPackets);
