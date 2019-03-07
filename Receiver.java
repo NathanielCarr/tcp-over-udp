@@ -42,10 +42,10 @@ class Receiver {
         private JLabel lblReceived;
 
 
-        private class CloseListener implements WindowAdapter {
+        private class CloseListener extends WindowAdapter {
             @Override
             public void windowClosing(WindowEvent e){
-                ReceiverView.this.model.rStatus = ReceiverView.this.model.Status.FINISHED;
+                ReceiverView.this.model.stop();
                 e.getWindow().dispose();
             }
         }
@@ -181,13 +181,14 @@ class Receiver {
          */
         private void registerListeners() {
             this.btnReceive.addActionListener(new ReceiveListener());
-            this.addWindowListener();
+            this.frmRdtReceiver.addWindowListener(new CloseListener());
         }
     }
 
     public static class ReceiverThread implements Runnable {
         private final DatagramSocket receiveSocket;
         private final DatagramSocket sendSocket;
+        private InetAddress senderAddress;
         private final File writeFile;
         private List<Byte> fileByteList;
         private final Boolean reliability;
@@ -248,7 +249,7 @@ class Receiver {
             }
 
             public byte toByte() {
-                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.eof ? '1' : '0',
+                char[] bitArr = { this.handshake ? '1' : '0', this.eof ? '1' : '0', this.ack ? '1' : '0',
                         this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
                 return (byte) Integer.parseInt(new String(bitArr), 2);
             }
@@ -272,7 +273,8 @@ class Receiver {
         public ReceiverThread(Boolean reliability, String fileName, int rPort, String sServer, int sPort)
                 throws SocketException, UnknownHostException, IOException {
             this.receiveSocket = new DatagramSocket(rPort);
-            this.sendSocket = new DatagramSocket(sPort, InetAddress.getByName(sServer));
+            this.sendSocket = new DatagramSocket(sPort);
+            this.senderAddress = InetAddress.getByName(sServer);
             this.reliability = reliability;
 
             this.rStatus = Status.RECEIVING;
@@ -295,7 +297,7 @@ class Receiver {
             byte[] headerByteArr = { header.toByte() };
             System.arraycopy(headerByteArr, 0, contents, 0, 1);
             System.arraycopy(data, 0, contents, 1, data.length);
-            return new DatagramPacket(contents, contents.length, this.sendSocket.getLocalSocketAddress());
+            return new DatagramPacket(contents, contents.length, this.senderAddress, this.sendSocket.getPort());
         }
 
         private byte[] extractData(DatagramPacket packet) {
@@ -398,10 +400,17 @@ class Receiver {
             return;
 
         }
+
+        public void stop() {
+            this.rStatus = Status.FINISHED;
+        }
     }
 
     public static void main(String[] args) {
-        new ReceiverView().frmRdtReceiver.setVisible(true);
+        ReceiverView rView = new ReceiverView();
+        rView.frmRdtReceiver.setVisible(true);
+        rView.model.run();
+
     }
 
 }
