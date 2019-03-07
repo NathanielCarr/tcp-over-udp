@@ -59,7 +59,7 @@ class Sender {
                         int timeout = (int) spnTimeout.getValue();
                         File file = new File(txtFile.getText());
 
-                        senderWorker = new SenderWorker(SenderView.this, addr, port, myPort, mds, timeout, file);
+                        senderWorker = new SenderWorker(SenderView.this, addr, port, myPort, timeout, mds, file);
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
@@ -183,7 +183,7 @@ class Sender {
         }
 
         public void threadComplete(long elapsedTime) {
-            lblTransTime.setText(String.format("Transmission time: %l ms", elapsedTime / 1000));
+            lblTransTime.setText(String.format("Transmission time: %d ms", elapsedTime / 1000));
         }
     }
 
@@ -226,7 +226,7 @@ class Sender {
             }
 
             public byte toByte() {
-                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.fin ? '1' : '0',
+                char[] bitArr = { this.handshake ? '1' : '0', this.fin ? '1' : '0', this.ack ? '1' : '0',
                         this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
                 return (byte) Integer.parseInt(new String(bitArr), 2);
             }
@@ -264,10 +264,13 @@ class Sender {
 
             // Ready input socket.
             this.inSocket = new DatagramSocket(myPort);
-            this.inSocket.setSoTimeout(timeoutMs);
 
             // Set seq to 0.
             this.seq = 0;
+
+            this.mds = mds;
+
+            this.view = view;
         }
 
         public Void doInBackground() {
@@ -288,6 +291,7 @@ class Sender {
         }
 
         private void handshake() throws IOException {
+            // Make first handshake packet, containing a body of the MDS.
             Boolean acked = false;
             DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq),
                     ByteBuffer.allocate(2).putShort((short) this.mds).array());
@@ -295,16 +299,18 @@ class Sender {
                 try {
                     // Send first sequence of handshake.
                     this.outSocket.send(packet);
+                    System.out.println(String.format("Sent packet (in handshake)."));
                     acked = false;
 
                     // Receive response from first sequence of handshake.
                     byte[] inBuffer = new byte[mds];
                     DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                     inSocket.receive(inPacket);
+                    Header inHeader = new Header(inPacket.getData()[0]);
+                    System.out.println(String.format("Received packet (in handshake)."));
 
                     // Check for ACK & handshake bit.
-                    Header inHeader = new Header(inBuffer[0]);
-                    acked = (inHeader.isHandshake() && inHeader.isAck() && inHeader.getSeq() == this.seq);
+                    acked = (inHeader.isHandshake() && inHeader.isAck());
 
                 } catch (SocketTimeoutException e) {
                     System.out.println(e.toString());
@@ -329,6 +335,7 @@ class Sender {
                     try {
                         // Send packet.
                         this.outSocket.send(packet);
+                        System.out.println(String.format("Sent packet %d (in sendFile).", byteIndex));
                         acked = false;
 
                         // Receive responses until timeout OR until appropriate ACK received.
@@ -337,9 +344,10 @@ class Sender {
                             byte[] inBuffer = new byte[mds];
                             DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                             inSocket.receive(inPacket);
+                            Header inHeader = new Header(inPacket.getData()[0]);
+                            System.out.println(String.format("Received packet (in sendFile)."));
 
                             // Check that the ACK received is for the sent packet.
-                            Header inHeader = new Header(inBuffer[0]);
                             acked = (inHeader.isAck() && inHeader.getSeq() == this.seq);
                         } while (!acked);
 
@@ -354,55 +362,40 @@ class Sender {
         }
 
         private void endConnection() throws IOException {
-            Boolean acked = false;
-            // Send fin message and wait for appropriate ACK.
-            DatagramPacket packet = makeDatagramPacket(new Header(false, true, false, seq), new byte[0]);
+            int finAttempts = 4;
+            Boolean acked  = false;
+
+            // Fin message.
+            DatagramPacket finPacket = makeDatagramPacket(new Header(false, true, false, seq), new byte[0]);
+
+            // Send fin.
             do {
                 try {
-                    this.outSocket.send(packet);
+                    this.outSocket.send(finPacket);
+                    System.out.println(String.format("Sent packet (in endConnection)."));
+                    finAttempts--;
                     acked = false;
 
                     // Receive response from first sequence of end of connection procedure.
                     byte[] inBuffer = new byte[mds];
                     DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                     inSocket.receive(inPacket);
+                    Header inHeader = new Header(inPacket.getData()[0]);
+                    System.out.println(String.format("Received packet (in endConnection)."));
 
                     // Check for ACK.
-                    Header inHeader = new Header(inBuffer[0]);
                     acked = (inHeader.isAck() && inHeader.getSeq() == this.seq);
+
 
                 } catch (SocketTimeoutException e) {
                     System.out.println(e.toString());
                 }
-            } while (!acked);
+
+            } while (!acked && finAttempts > 0);
 
             // Increment sequence number.
             seq++;
 
-            // Await FIN message from Receiver. Double timeout on inSocket so Receiver can
-            // re-send FIN message if Sender's ACK gets lost.
-            this.inSocket.setSoTimeout(2 * this.inSocket.getSoTimeout());
-            try {
-                while (true) {
-                    // Ignore non-FIN messages.
-                    Boolean hasFin = false;
-                    do {
-                        // Wait for notification that Receiver is FIN.
-                        byte[] inBuffer = new byte[mds];
-                        DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
-                        inSocket.receive(inPacket);
-
-                        // Check that message is FIN.
-                        Header inHeader = new Header(inBuffer[0]);
-                        hasFin = (inHeader.isFin() && inHeader.getSeq() == this.seq);
-                    } while (!hasFin);
-
-                    // Send ACK of Receiver's FIN.
-                    this.outSocket.send(makeDatagramPacket(new Header(false, true, false, seq), new byte[0]));
-                }
-            } catch (SocketTimeoutException e) {
-                // Timeout occurred after sending ACK of Receiver's FIN. Connection over.
-            }
         }
 
         private DatagramPacket makeDatagramPacket(Header header, byte[] data) {

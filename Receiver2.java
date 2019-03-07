@@ -1,9 +1,5 @@
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
-import java.beans.PropertyChangeSupport;
-import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -12,24 +8,22 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
-import javax.swing.JToggleButton;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
-import javax.swing.SwingWorker;
 
 class Receiver2 {
+
+    public static void main(String[] args) {
+        new ReceiverView().frmRdtReceiver.setVisible(true);
+    }
 
     private static class ReceiverView {
 
@@ -41,6 +35,49 @@ class Receiver2 {
         private JCheckBox chkUnreliable;
         private JButton btnReceive;
         private JLabel lblReceived;
+
+        private ReceiverWorker receiverWorker;
+
+        private class ButtonListener implements ActionListener {
+
+            @Override
+            public void actionPerformed(ActionEvent evt) {
+                if (!txtAddr.getText().matches("[0-9\\.]+") && !txtAddr.getText().toUpperCase().equals("LOCALHOST")) {
+                    JOptionPane.showMessageDialog(null, "An IP address can only contain digits and '.'.",
+                            "Invalid IP Address", JOptionPane.ERROR_MESSAGE);
+                } else if (txtFile.getText() == "") {
+                    JOptionPane.showMessageDialog(null, "A file must be specified.", "Missing File",
+                            JOptionPane.ERROR_MESSAGE);
+                } else {
+                    try {
+                        InetAddress addr = InetAddress.getByName(txtAddr.getText());
+                        int port = (int) spnPort.getValue();
+                        int myPort = (int) spnMyPort.getValue();
+                        FileOutputStream fos = new FileOutputStream(txtFile.getText(), false);
+                        Boolean reliable = !chkUnreliable.isSelected();
+
+                        receiverWorker = new ReceiverWorker(ReceiverView.this, addr, port, myPort, reliable, fos);
+                    } catch (UnknownHostException e) {
+                        JOptionPane.showMessageDialog(null,
+                                "The IP address specified cannot be resolved. Please check this address.",
+                                "Bad Address", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    } catch (SocketException e) {
+                        JOptionPane.showMessageDialog(null,
+                                "Couldn't connect to the destination. Please check the IP address and port number.",
+                                "Can't Connect", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    } catch (IOException e) {
+                        JOptionPane.showMessageDialog(null,
+                                "The file couldn't be read. Please check the path and make sure it exists.",
+                                "Bad File Path", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    receiverWorker.start();
+                }
+            }
+
+        }
 
         public ReceiverView() {
             initialize();
@@ -64,10 +101,12 @@ class Receiver2 {
             frmRdtReceiver.getContentPane().add(txtAddr);
 
             spnPort = new JSpinner();
+            spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
             spnPort.setBounds(213, 27, 111, 20);
             frmRdtReceiver.getContentPane().add(spnPort);
 
             spnMyPort = new JSpinner();
+            spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
             spnMyPort.setBounds(334, 27, 111, 20);
             frmRdtReceiver.getContentPane().add(spnMyPort);
 
@@ -117,7 +156,11 @@ class Receiver2 {
         }
 
         private void registerListeners() {
+            btnReceive.addActionListener(new ButtonListener());
+        }
 
+        public void updateReceivedLabel(int numPackets) {
+            lblReceived.setText(String.format("R: Received in-order packets: %d", numPackets));
         }
 
     }
@@ -161,7 +204,7 @@ class Receiver2 {
             }
 
             public byte toByte() {
-                char[] bitArr = { this.handshake ? '1' : '0', this.ack ? '1' : '0', this.fin ? '1' : '0',
+                char[] bitArr = { this.handshake ? '1' : '0', this.fin ? '1' : '0', this.ack ? '1' : '0',
                         this.seq != 0 ? '1' : '0', '0', '0', '0', '0' };
                 return (byte) Integer.parseInt(new String(bitArr), 2);
             }
@@ -170,22 +213,28 @@ class Receiver2 {
 
         static final int DROP_AT = 9;
 
-        private File outFile;
+        private FileOutputStream fos;
         private ReceiverView view;
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
+        private InetAddress addr;
+        private int port;
         private int mds;
         private Boolean reliable;
         private int dropCounter;
         private int seq;
 
-        public ReceiverWorker(ReceiverView view, InetAddress addr, int port, int myPort, Boolean reliable, File outFile)
-                throws SocketException, IOException {
+        public ReceiverWorker(ReceiverView view, InetAddress addr, int port, int myPort, Boolean reliable,
+                FileOutputStream fos) throws SocketException, IOException {
 
-            this.outFile = outFile;
+            this.view = view;
+
+            this.fos = fos;
 
             // Ready output socket.
-            this.outSocket = new DatagramSocket(port, addr);
+            this.addr = addr;
+            this.port = port;
+            this.outSocket = new DatagramSocket();
 
             // Ready input socket.
             this.inSocket = new DatagramSocket(myPort);
@@ -196,6 +245,7 @@ class Receiver2 {
             // Set seq to 0.
             this.seq = 0;
 
+            // Unreliable transfer information.
             this.reliable = reliable;
             this.dropCounter = 0;
 
@@ -203,11 +253,7 @@ class Receiver2 {
 
         public void run() {
             try {
-                byte[] fileBytes = receiveFile();
-                outFile.getParentFile().mkdirs();
-                outFile.createNewFile();
-                FileOutputStream fos = new FileOutputStream(outFile, false);
-                fos.write(fileBytes);
+                receiveFile();
                 fos.close();
                 this.inSocket.close();
                 this.outSocket.close();
@@ -216,9 +262,9 @@ class Receiver2 {
             }
         }
 
-        private byte[] receiveFile() throws IOException {
+        private void receiveFile() throws IOException {
 
-            List<Byte> fileBytes = new ArrayList<Byte>();
+            int numPackets = 0;
 
             byte[] inBuffer = new byte[3];
             DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
@@ -230,13 +276,16 @@ class Receiver2 {
                 inBuffer = new byte[mds];
                 inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                 inSocket.receive(inPacket);
-                inHeader = new Header(inBuffer[0]);
+                inHeader = new Header(inPacket.getData()[0]);
                 dropCounter = (dropCounter + 1) % DROP_AT;
+                System.out.println(String.format("R: Received packet (in handshake)."));
 
                 // Send ACK and set MDS appropriately.
                 if (inHeader.isHandshake() && (dropCounter != DROP_AT || reliable)) {
                     mds = (int) ByteBuffer.wrap(extractData(inPacket)).getShort();
                     outSocket.send(makeDatagramPacket(new Header(true, false, true, inHeader.getSeq()), new byte[0]));
+                    view.updateReceivedLabel(++numPackets);
+                    System.out.println(String.format("R: Sent packet (in handshake)."));
                 }
 
             } while (inHeader.isHandshake());
@@ -248,24 +297,26 @@ class Receiver2 {
             do {
                 // Process packet contents if the packet received is appropriate.
                 if (inHeader.getSeq() == seq) {
-                    for (byte pByte : extractData(inPacket))
-                        fileBytes.add(pByte);
+                    fos.write(extractData(inPacket));
                     seq++;
                 }
 
                 // Send ACK for last packet received.
                 if (dropCounter != DROP_AT || reliable) {
                     outSocket.send(makeDatagramPacket(new Header(false, false, true, inHeader.getSeq()), new byte[0]));
+                    view.updateReceivedLabel(++numPackets);
+                    System.out.println(String.format("R: Sent packet (in receiveFile)."));
                 }
 
                 // Get next packet.
                 inBuffer = new byte[mds];
                 inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                 inSocket.receive(inPacket);
-                inHeader = new Header(inBuffer[0]);
+                inHeader = new Header(inPacket.getData()[0]);
                 dropCounter = (dropCounter + 1) % DROP_AT;
+                System.out.println(String.format("R: Received packet (in sendFile)."));
 
-            } while (!(inHeader.isFin() && inHeader.getSeq() == seq));
+            } while (!inHeader.isFin() && inHeader.getSeq() == seq);
 
             // FIN actions.
             Boolean finAcked = false;
@@ -273,24 +324,23 @@ class Receiver2 {
                 // Send ACK of FIN + own FIN.
                 if (dropCounter != DROP_AT || reliable) {
                     outSocket.send(makeDatagramPacket(new Header(false, true, true, inHeader.getSeq()), new byte[0]));
+                    view.updateReceivedLabel(++numPackets);
+                    System.out.println(String.format("R: Sent packet (in endConnection)."));
                 }
 
                 // Receive ACK of FIN.
                 inBuffer = new byte[mds];
                 inPacket = new DatagramPacket(inBuffer, inBuffer.length);
                 inSocket.receive(inPacket);
-                inHeader = new Header(inBuffer[0]);
+                inHeader = new Header(inPacket.getData()[0]);
                 finAcked = (inHeader.isAck() && inHeader.getSeq() == seq);
                 dropCounter = (dropCounter + 1) % DROP_AT;
+                System.out.println(String.format("R: Received packet (in endConnection)."));
 
             } while (!finAcked);
 
-            byte[] fileBytesArr = new byte[fileBytes.size()];
-            for (int i = 0; i < fileBytes.size(); i++) {
-                fileBytesArr[i] = fileBytes.get(i);
-            }
+            view.updateReceivedLabel(++numPackets);
 
-            return fileBytesArr;
         }
 
         private DatagramPacket makeDatagramPacket(Header header, byte[] data) {
@@ -299,7 +349,7 @@ class Receiver2 {
             byte[] headerByteArr = { header.toByte() };
             System.arraycopy(headerByteArr, 0, contents, 0, 1);
             System.arraycopy(data, 0, contents, 1, data.length);
-            return new DatagramPacket(contents, contents.length, this.outSocket.getLocalSocketAddress());
+            return new DatagramPacket(contents, contents.length, this.addr, this.port);
         }
 
         private byte[] extractData(DatagramPacket packet) {
@@ -308,11 +358,6 @@ class Receiver2 {
             System.arraycopy(contents, 1, data, 0, contents.length - 1);
             return data;
         }
-    }
-
-    public static void main(String[] args) {
-        new ReceiverView().frmRdtReceiver.setVisible(true);
-
     }
 
 }
