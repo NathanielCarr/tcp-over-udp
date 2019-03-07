@@ -286,6 +286,8 @@ class Receiver2 {
                     outSocket.send(makeDatagramPacket(new Header(true, false, true, inHeader.getSeq()), new byte[0]));
                     view.updateReceivedLabel(++numPackets);
                     System.out.println(String.format("R: Sent packet (in handshake)."));
+                } else {
+                    System.out.println(String.format("R: Dropped packet (in handshake)."));
                 }
 
             } while (inHeader.isHandshake());
@@ -298,7 +300,7 @@ class Receiver2 {
                 // Process packet contents if the packet received is appropriate.
                 if (inHeader.getSeq() == seq) {
                     fos.write(extractData(inPacket));
-                    seq++;
+                    seq = ++seq % 2;
                 }
 
                 // Send ACK for last packet received.
@@ -318,26 +320,12 @@ class Receiver2 {
 
             } while (!inHeader.isFin() && inHeader.getSeq() == seq);
 
-            // FIN actions.
-            Boolean finAcked = false;
-            do {
-                // Send ACK of FIN + own FIN.
-                if (dropCounter != DROP_AT || reliable) {
-                    outSocket.send(makeDatagramPacket(new Header(false, true, true, inHeader.getSeq()), new byte[0]));
-                    view.updateReceivedLabel(++numPackets);
-                    System.out.println(String.format("R: Sent packet (in endConnection)."));
-                }
-
-                // Receive ACK of FIN.
-                inBuffer = new byte[mds];
-                inPacket = new DatagramPacket(inBuffer, inBuffer.length);
-                inSocket.receive(inPacket);
-                inHeader = new Header(inPacket.getData()[0]);
-                finAcked = (inHeader.isAck() && inHeader.getSeq() == seq);
-                dropCounter = (dropCounter + 1) % DROP_AT;
-                System.out.println(String.format("R: Received packet (in endConnection)."));
-
-            } while (!finAcked);
+            // Send ACK of FIN + own FIN.
+            if (dropCounter != DROP_AT || reliable) {
+                outSocket.send(makeDatagramPacket(new Header(false, true, true, inHeader.getSeq()), new byte[0]));
+                view.updateReceivedLabel(++numPackets);
+                System.out.println(String.format("R: Sent packet (in endConnection)."));
+            }
 
             view.updateReceivedLabel(++numPackets);
 

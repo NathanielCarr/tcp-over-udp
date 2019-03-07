@@ -318,7 +318,7 @@ class Sender {
             } while (!acked);
 
             // Increment sequence number.
-            this.seq++;
+            seq = ++seq % 2;
         }
 
         private void sendFile() throws IOException {
@@ -357,7 +357,7 @@ class Sender {
                 } while (!acked);
 
                 // Increment sequence number.
-                this.seq++;
+                seq = ++seq % 2;
             }
         }
 
@@ -394,7 +394,7 @@ class Sender {
             } while (!acked && finAttempts > 0);
 
             // Increment sequence number.
-            seq++;
+            seq = ++seq % 2;
 
         }
 
