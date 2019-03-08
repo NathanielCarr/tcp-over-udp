@@ -24,6 +24,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 
 class Receiver {
@@ -45,8 +46,12 @@ class Receiver {
         private class CloseListener extends WindowAdapter {
             @Override
             public void windowClosing(WindowEvent e){
-                ReceiverView.this.model.stop();
-                e.getWindow().dispose();
+                if (ReceiverView.this.model != null) {
+                    ReceiverView.this.model.stop();
+                }
+                // e.getWindow().dispose();
+                // ReceiverView.this.frmRdtReceiver.dispose();
+                // System.exit(0);
             }
         }
 
@@ -65,27 +70,36 @@ class Receiver {
         private class ReceiveListener implements ActionListener {
             @Override
             public void actionPerformed(ActionEvent e) {
-                try {
-                    ReceiverView.this.model = new ReceiverThread(ReceiverView.this.chkUnreliable.isSelected(),
-                            ReceiverView.this.txtFile.getText(),
-                            (int) ReceiverView.this.spnPort.getValue(),
-                            ReceiverView.this.txtAddr.getText(),
-                            (int) ReceiverView.this.spnMyPort.getValue());
-                    ReceiverView.this.setEnabledAll(false);
-                    ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
-                } catch (SocketException sEx) {
-                    JOptionPane.showMessageDialog(null, sEx.getMessage() + "\n", "Socket Exception",
+                if (!txtAddr.getText().matches("[0-9\\.]+") && !txtAddr.getText().toUpperCase().equals("LOCALHOST")) {
+                    JOptionPane.showMessageDialog(null,
+                            "An IP address can only contain digits and '.'. Alternatively, write \"localhost\" for your own IP address",
+                            "Invalid IP Address", JOptionPane.ERROR_MESSAGE);
+                } else if (txtFile.getText() == "") {
+                    JOptionPane.showMessageDialog(null, "A file must be specified.", "Missing File",
                             JOptionPane.ERROR_MESSAGE);
-                } catch (UnknownHostException uhEx) {
-                    JOptionPane.showMessageDialog(null, uhEx.getMessage() + "\n", "Unknown Host Exception",
-                            JOptionPane.ERROR_MESSAGE);
-                } catch (IOException IOEx) {
-                    JOptionPane.showMessageDialog(null, IOEx.getMessage() + "\n", "I/O Exception",
-                            JOptionPane.ERROR_MESSAGE);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error",
-                            JOptionPane.ERROR_MESSAGE);
-                } 
+                } else {
+                    try {
+                        ReceiverView.this.model = new ReceiverThread(ReceiverView.this.chkUnreliable.isSelected(),
+                                ReceiverView.this.txtFile.getText(),
+                                (int) ReceiverView.this.spnPort.getValue(),
+                                ReceiverView.this.txtAddr.getText(),
+                                (int) ReceiverView.this.spnMyPort.getValue());
+                        ReceiverView.this.setEnabledAll(false);
+                        ReceiverView.this.model.addPropertyChangeListener(new AttributesListener());
+                    } catch (SocketException sEx) {
+                        JOptionPane.showMessageDialog(null, "Couldn't connect to the destination. Please check the IP address and port numbers.\n" + sEx.getMessage(), "Socket Exception",
+                                JOptionPane.ERROR_MESSAGE);
+                    } catch (UnknownHostException uhEx) {
+                        JOptionPane.showMessageDialog(null, "The IP address specified cannot be resolved. Please check this address.\n" + uhEx.getMessage(), "Unknown Host Exception",
+                                JOptionPane.ERROR_MESSAGE);
+                    } catch (IOException IOEx) {
+                        JOptionPane.showMessageDialog(null, "The file could not be read. Please check the path.\n" + IOEx.getMessage(), "I/O Exception",
+                                JOptionPane.ERROR_MESSAGE);
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(null, ex.getMessage() + "\n", "Unknown Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    } 
+                }
             }
         }
 
@@ -188,11 +202,17 @@ class Receiver {
     public static class ReceiverThread implements Runnable {
         private final DatagramSocket receiveSocket;
         private final DatagramSocket sendSocket;
+        private final int senderPort;
         private InetAddress senderAddress;
+
         private final File writeFile;
-        private List<Byte> fileByteList;
+        // private List<Byte> fileByteList;
+        private final FileOutputStream packetFOS;
+
         private final Boolean reliability;
+        private final int DROP = 10;
         private int tenth;
+
         private int datagramSize;
         private final int HANDSHAKE_SIZE = 3;
         private Boolean handshake;
@@ -228,8 +248,8 @@ class Receiver {
             public Header(byte header) {
                 this.handshake = ((header >> 7) & 1) == 1;
                 this.eof = ((header >> 6) & 1) == 1;
-                this.ack = ((header >> 6) & 1) == 1;
-                this.seq = (header >> 6) & 1;
+                this.ack = ((header >> 5) & 1) == 1;
+                this.seq = (header >> 4) & 1;
             }
 
             public Boolean isHandshake() {
@@ -273,13 +293,16 @@ class Receiver {
         public ReceiverThread(Boolean reliability, String fileName, int rPort, String sServer, int sPort)
                 throws SocketException, UnknownHostException, IOException {
             this.receiveSocket = new DatagramSocket(rPort);
-            this.sendSocket = new DatagramSocket(sPort);
+            this.sendSocket = new DatagramSocket();
+            this.senderPort = sPort;
             this.senderAddress = InetAddress.getByName(sServer);
             this.reliability = reliability;
 
+            this.packetFOS = new FileOutputStream(fileName, false);
+
             this.rStatus = Status.RECEIVING;
             this.receivedPackets = 0;
-            this.tenth = 0;
+            this.tenth = 1;
 
             this.seqNum = 0;
             this.datagramSize = this.HANDSHAKE_SIZE;
@@ -297,7 +320,7 @@ class Receiver {
             byte[] headerByteArr = { header.toByte() };
             System.arraycopy(headerByteArr, 0, contents, 0, 1);
             System.arraycopy(data, 0, contents, 1, data.length);
-            return new DatagramPacket(contents, contents.length, this.senderAddress, this.sendSocket.getPort());
+            return new DatagramPacket(contents, contents.length, this.senderAddress, this.senderPort);
         }
 
         private byte[] extractData(DatagramPacket packet) {
@@ -308,40 +331,33 @@ class Receiver {
         }
 
         public void receivePacket(DatagramPacket packet) throws IOException {// packet received successfully
-
-            // check to make sure it's the right sequence number, eof, ack, etc
-            Header packetHeader = new Header(packet.getData()[0]);
-            byte[] data;
-            DatagramPacket ackPac;
-            if (packetHeader.getSeq() == this.seqNum && !this.eof) {
-                this.handshake = packetHeader.isHandshake();
-                this.eof = packetHeader.isFin();
-                data = extractData(packet);
-                if (this.handshake) {
-                    this.datagramSize = (int) ByteBuffer.wrap(data).getShort();
+            Header packetHeader = new Header(packet.getData()[0]); // Header of the packet
+            byte[] data; // Data stored in the packet
+            DatagramPacket ackPac; // Acknowledgement to 
+            if (packetHeader.getSeq() == this.seqNum && !this.eof) { // If the sequence number is correct
+                this.handshake = packetHeader.isHandshake(); // update whether handshaking
+                this.eof = packetHeader.isFin(); // update whether conversation is over
+                data = extractData(packet); // Get the data from the packet
+                this.packetFOS.write(data); // write current packet to the file
+                if (this.handshake) { // if this is the handshake
+                    this.datagramSize = (int) ByteBuffer.wrap(data).getShort(); // update the max datagram size
                 }
                 else if (this.eof) { // refers to eof in recent packet
                     this.rStatus = Status.FINISHED;
                 }
-                else {
-                    for (byte b : data) {
-                        this.fileByteList.add(b);
-                    }
-                }
+                // else { // for when adding data to file all at once
+                //     for (byte b : data) {
+                //         this.fileByteList.add(b);
+                //     }
+                // }
                 int oldValue = this.receivedPackets;
                 this.receivedPackets++;
                 this.pcs.firePropertyChange("PacketNum", oldValue, this.receivedPackets);
                 this.seqNum = seqNum == 0 ? 1 : 0;
-            } // else if (this.eof) { // reffers to receiver eof before packet header processed
-                // where the problem lays
-                // change status here if condition
-                // still works if sender resent prev packet
-            // } Zima said unnesesary because is one way
+            } 
             
-            if (this.rStatus == Status.RECEIVING) {
-                ackPac = makeDatagramPacket(new Header(this.handshake, this.eof, true, this.seqNum), new byte[0]);
-                this.sendSocket.send(ackPac);
-            }
+            ackPac = makeDatagramPacket(new Header(this.handshake, this.eof, true, this.seqNum), new byte[0]);
+            this.sendSocket.send(ackPac);
         
         }
 
@@ -357,40 +373,38 @@ class Receiver {
             try {
                 byte[] receiveBuff;
                 DatagramPacket packet;
-                this.fileByteList = new ArrayList<Byte>();
+                // this.fileByteList = new ArrayList<Byte>();
                 while ((rStatus == Status.RECEIVING) && (!Thread.interrupted())) {
                     receiveBuff = new byte[this.datagramSize];
                     packet = new DatagramPacket(receiveBuff, this.datagramSize);
                     try {
                         this.receiveSocket.receive(packet);
-                    } catch (Exception e) {
-                    }
-                    if (this.reliability || this.tenth != 9) {
-                        try{
+                    
+                        if (this.reliability || this.tenth != this.DROP) {
                             receivePacket(packet);
-                        } catch (IOException IOEx) {
-                            JOptionPane.showMessageDialog(null, "Could not parse packet\n" + IOEx.getMessage() + "\n", "I/O Exception",
-                                    JOptionPane.ERROR_MESSAGE);
+                            if (!this.reliability) {
+                                this.tenth++;
+                            }
+                        } else {
+                            this.tenth = 1;
                         }
-                        if (!this.reliability) {
-                            this.tenth++;
-                        }
-                    } else {
-                        this.tenth = 0;
-                    }
+                    } catch (IOException IOEx) {
+                        JOptionPane.showMessageDialog(null, "Could not parse packet\n" + IOEx.getMessage() + "\n", "I/O Exception",
+                                JOptionPane.ERROR_MESSAGE);
+                    } 
                     Thread.sleep(1000);
                 }
-                byte[] fileByteArr = new byte[this.fileByteList.size()];
-                for (int i = 0; i < fileByteArr.length; i++) {
-                    fileByteArr[i] = fileByteList.get(i);
-                }
+                // byte[] fileByteArr = new byte[this.fileByteList.size()];
+                // for (int i = 0; i < fileByteArr.length; i++) {
+                //     fileByteArr[i] = fileByteList.get(i);
+                // }
 
-                try {
-                    writeToFile(fileByteArr);
-                } catch (IOException IOEx) {
-                    JOptionPane.showMessageDialog(null, "Could not write to file\n" + IOEx.getMessage() + "\n", "I/O Exception",
-                            JOptionPane.ERROR_MESSAGE);
-                }
+                // try {
+                //     writeToFile(fileByteArr);
+                // } catch (IOException IOEx) {
+                //     JOptionPane.showMessageDialog(null, "Could not write to file\n" + IOEx.getMessage() + "\n", "I/O Exception",
+                //             JOptionPane.ERROR_MESSAGE);
+                // }
             } catch (InterruptedException e) {
 
             }
