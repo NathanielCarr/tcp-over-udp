@@ -46,8 +46,12 @@ class Receiver {
         private class CloseListener extends WindowAdapter {
             @Override
             public void windowClosing(WindowEvent e){
-                ReceiverView.this.model.stop();
-                e.getWindow().dispose();
+                if (ReceiverView.this.model != null) {
+                    ReceiverView.this.model.stop();
+                }
+                // e.getWindow().dispose();
+                // ReceiverView.this.frmRdtReceiver.dispose();
+                // System.exit(0);
             }
         }
 
