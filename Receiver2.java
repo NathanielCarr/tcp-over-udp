@@ -36,14 +36,15 @@ class Receiver2 {
         private JButton btnReceive;
         private JLabel lblReceived;
 
-        private ReceiverWorker receiverWorker;
+        private ReceiverThread receiverWorker;
 
         private class ButtonListener implements ActionListener {
 
             @Override
             public void actionPerformed(ActionEvent evt) {
                 if (!txtAddr.getText().matches("[0-9\\.]+") && !txtAddr.getText().toUpperCase().equals("LOCALHOST")) {
-                    JOptionPane.showMessageDialog(null, "An IP address can only contain digits and '.'.",
+                    JOptionPane.showMessageDialog(null,
+                            "An IP address can only contain digits and '.'. Alternatively, write \"localhost\" for your own IP address",
                             "Invalid IP Address", JOptionPane.ERROR_MESSAGE);
                 } else if (txtFile.getText() == "") {
                     JOptionPane.showMessageDialog(null, "A file must be specified.", "Missing File",
@@ -56,7 +57,7 @@ class Receiver2 {
                         FileOutputStream fos = new FileOutputStream(txtFile.getText(), false);
                         Boolean reliable = !chkUnreliable.isSelected();
 
-                        receiverWorker = new ReceiverWorker(ReceiverView.this, addr, port, myPort, reliable, fos);
+                        receiverWorker = new ReceiverThread(ReceiverView.this, addr, port, myPort, reliable, fos);
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
@@ -134,7 +135,7 @@ class Receiver2 {
             lblFile.setBounds(10, 58, 435, 14);
             frmRdtReceiver.getContentPane().add(lblFile);
 
-            JLabel lblAddr = new JLabel("Receiver IP address:");
+            JLabel lblAddr = new JLabel("Sender IP address:");
             lblAddr.setHorizontalAlignment(SwingConstants.LEFT);
             lblAddr.setBounds(10, 11, 186, 14);
             frmRdtReceiver.getContentPane().add(lblAddr);
@@ -160,12 +161,16 @@ class Receiver2 {
         }
 
         public void updateReceivedLabel(int numPackets) {
-            lblReceived.setText(String.format("R: Received in-order packets: %d", numPackets));
+            lblReceived.setText(String.format("Received in-order packets: %d", numPackets));
+        }
+
+        public void transferComplete() {
+            JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
         }
 
     }
 
-    private static class ReceiverWorker extends Thread {
+    private static class ReceiverThread extends Thread {
 
         public static class Header {
             private Boolean handshake;
@@ -224,7 +229,7 @@ class Receiver2 {
         private int dropCounter;
         private int seq;
 
-        public ReceiverWorker(ReceiverView view, InetAddress addr, int port, int myPort, Boolean reliable,
+        public ReceiverThread(ReceiverView view, InetAddress addr, int port, int myPort, Boolean reliable,
                 FileOutputStream fos) throws SocketException, IOException {
 
             this.view = view;
@@ -257,6 +262,7 @@ class Receiver2 {
                 fos.close();
                 this.inSocket.close();
                 this.outSocket.close();
+                view.transferComplete();
             } catch (Exception e) {
                 System.out.println(e.toString());
             }

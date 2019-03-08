@@ -181,7 +181,7 @@ class Sender2 {
         }
 
         public void transferComplete(long elapsedTime) {
-            JOptionPane.showMessageDialog(null, "The file has been transferred", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(null, "The file has been transferred.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
             btnSend.setEnabled(true);
             lblTransTime.setText(String.format("Transfer time: %d seconds.", elapsedTime / (1000 * 1000)));
         }
