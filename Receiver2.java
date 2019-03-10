@@ -36,7 +36,7 @@ class Receiver2 {
         private JButton btnReceive;
         private JLabel lblReceived;
 
-        private ReceiverThread receiverWorker;
+        private ReceiverThread receiverThread;
 
         private class ButtonListener implements ActionListener {
 
@@ -57,7 +57,8 @@ class Receiver2 {
                         FileOutputStream fos = new FileOutputStream(txtFile.getText(), false);
                         Boolean reliable = !chkUnreliable.isSelected();
 
-                        receiverWorker = new ReceiverThread(ReceiverView.this, addr, port, myPort, reliable, fos);
+                        receiverThread = new ReceiverThread(ReceiverView.this, addr, port, myPort, reliable, fos);
+                        receiverThread.start();
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
@@ -74,7 +75,6 @@ class Receiver2 {
                                 "Bad File Path", JOptionPane.ERROR_MESSAGE);
                         return;
                     }
-                    receiverWorker.start();
                 }
             }
 
