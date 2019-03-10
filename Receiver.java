@@ -24,7 +24,7 @@ import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 
-class Receiver2 {
+class Receiver {
 
     public static void main(String[] args) {
         new ReceiverView().frmRdtReceiver.setVisible(true);

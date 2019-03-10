@@ -18,20 +18,6 @@
             "request": "launch",
             "mainClass": "Receiver",
             "console": "integratedTerminal" 
-        },
-        {
-            "type": "java",
-            "name": "Receiver2",
-            "request": "launch",
-            "mainClass": "Receiver2",
-            "console": "integratedTerminal" 
-        },
-        {
-            "type": "java",
-            "name": "Sender2",
-            "request": "launch",
-            "mainClass": "Sender2",
-            "console": "integratedTerminal" 
         }
     ]
 }

@@ -23,7 +23,7 @@ import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 
-class Sender2 {
+class Sender {
 
     public static void main(String[] args) throws IOException {
         new SenderView().frmRdtSender.setVisible(true);
