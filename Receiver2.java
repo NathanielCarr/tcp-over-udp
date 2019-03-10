@@ -1,5 +1,8 @@
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -38,6 +41,21 @@ class Receiver2 {
 
         private ReceiverThread receiverThread;
 
+        /**
+         * Updates the attributes of the model in the view.
+         */
+        private class PacketsListener implements PropertyChangeListener {
+
+            @Override
+            public void propertyChange(final PropertyChangeEvent evt) {
+                ReceiverView.this.lblReceived.setText(String.format("Received in-order packets: %d", (int) evt.getNewValue()));
+                if (evt.getPropertyName() == "FIN") {
+                    JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
+                    ReceiverView.this.setEnabledAll(true);
+                }
+            }
+        }
+
         private class ButtonListener implements ActionListener {
 
             @Override
@@ -57,7 +75,9 @@ class Receiver2 {
                         FileOutputStream fos = new FileOutputStream(txtFile.getText(), false);
                         Boolean reliable = !chkUnreliable.isSelected();
 
-                        receiverThread = new ReceiverThread(ReceiverView.this, addr, port, myPort, reliable, fos);
+                        receiverThread = new ReceiverThread(addr, port, myPort, reliable, fos);
+                        receiverThread.addPropertyChangeListener(new PacketsListener());
+                        ReceiverView.this.setEnabledAll(false);
                         receiverThread.start();
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
@@ -80,6 +100,16 @@ class Receiver2 {
 
         }
 
+        private void setEnabledAll(Boolean status) {
+            spnMyPort.setEnabled(status);
+            spnPort.setEnabled(status);
+            txtFile.setEnabled(status);
+            txtAddr.setEnabled(status);
+            chkUnreliable.setEnabled(status);
+            btnReceive.setEnabled(status);
+            lblReceived.setText(String.format("Received in-order packets: %d", 0));
+        }
+
         public ReceiverView() {
             initialize();
             registerListeners();
@@ -95,7 +125,7 @@ class Receiver2 {
             frmRdtReceiver.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frmRdtReceiver.getContentPane().setLayout(null);
 
-            txtAddr = new JTextField();
+            txtAddr = new JTextField("localhost");
             txtAddr.setHorizontalAlignment(SwingConstants.RIGHT);
             txtAddr.setColumns(10);
             txtAddr.setBounds(10, 27, 191, 20);
@@ -160,13 +190,13 @@ class Receiver2 {
             btnReceive.addActionListener(new ButtonListener());
         }
 
-        public void updateReceivedLabel(int numPackets) {
-            lblReceived.setText(String.format("Received in-order packets: %d", numPackets));
-        }
+        // public void updateReceivedLabel(int numPackets) {
+        //     lblReceived.setText(String.format("Received in-order packets: %d", numPackets));
+        // }
 
-        public void transferComplete() {
-            JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
-        }
+        // public void transferComplete() {
+        //     JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
+        // }
 
     }
 
@@ -216,10 +246,19 @@ class Receiver2 {
 
         }
 
+        private final PropertyChangeSupport pcs = new PropertyChangeSupport(this);
+
+        public void addPropertyChangeListener(final PropertyChangeListener listener) {
+            this.pcs.addPropertyChangeListener(listener);
+        }
+
+        public void addPropertyChangeListener(final String propertyName, final PropertyChangeListener listener) {
+            this.pcs.addPropertyChangeListener(propertyName, listener);
+        }
+
         static final int DROP_AT = 10;
 
         private FileOutputStream fos;
-        private ReceiverView view;
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
         private InetAddress addr;
@@ -227,12 +266,11 @@ class Receiver2 {
         private int mds;
         private Boolean reliable;
         private int dropCounter;
+        private int numPackets;
         private int seq;
 
-        public ReceiverThread(ReceiverView view, InetAddress addr, int port, int myPort, Boolean reliable,
+        public ReceiverThread(InetAddress addr, int port, int myPort, Boolean reliable,
                 FileOutputStream fos) throws SocketException, IOException {
-
-            this.view = view;
 
             this.fos = fos;
 
@@ -262,7 +300,8 @@ class Receiver2 {
                 fos.close();
                 this.inSocket.close();
                 this.outSocket.close();
-                view.transferComplete();
+                // view.transferComplete(); not model-view
+                this.pcs.firePropertyChange("FIN", numPackets, ++numPackets);
             } catch (Exception e) {
                 System.out.println(e.toString());
             }
@@ -270,7 +309,7 @@ class Receiver2 {
 
         private void receiveFile() throws IOException {
 
-            int numPackets = 0;
+            numPackets = 0;
 
             byte[] inBuffer = new byte[3];
             DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
@@ -290,7 +329,8 @@ class Receiver2 {
                 if (inHeader.isHandshake() && (dropCounter != 0 || reliable)) {
                     mds = (int) ByteBuffer.wrap(extractData(inPacket)).getShort();
                     outSocket.send(makeDatagramPacket(new Header(true, false, true, inHeader.getSeq()), new byte[0]));
-                    view.updateReceivedLabel(++numPackets);
+                    // view.updateReceivedLabel(++numPackets); not model-view
+                    this.pcs.firePropertyChange("Packets", numPackets, ++numPackets);
                     System.out.println(String.format("R: Sent packet (in handshake)."));
                 } else {
                     System.out.println(String.format("R: Dropped packet (in handshake)."));
@@ -312,7 +352,8 @@ class Receiver2 {
                 // Send ACK for last packet received.
                 if (dropCounter != 0 || reliable) {
                     outSocket.send(makeDatagramPacket(new Header(false, false, true, inHeader.getSeq()), new byte[0]));
-                    view.updateReceivedLabel(++numPackets);
+                    // view.updateReceivedLabel(++numPackets); not model-view
+                    this.pcs.firePropertyChange("Packets", numPackets, ++numPackets);
                     System.out.println(String.format("R: Sent packet (in receiveFile)."));
                 } else {
                     System.out.println(String.format("R: Dropped packet (in receiveFile)."));
@@ -331,14 +372,16 @@ class Receiver2 {
             // Send ACK of FIN + own FIN.
             if (dropCounter != 0 || reliable) {
                 outSocket.send(makeDatagramPacket(new Header(false, true, true, inHeader.getSeq()), new byte[0]));
-                view.updateReceivedLabel(++numPackets);
+                // view.updateReceivedLabel(++numPackets); not model-view
+                this.pcs.firePropertyChange("Packets", numPackets, ++numPackets);
                 System.out.println(String.format("R: Sent packet (in endConnection)."));
             } else {
                 dropCounter = ++dropCounter % DROP_AT;
                 System.out.println(String.format("R: Dropped packet (in endConnection)."));
             }
 
-            view.updateReceivedLabel(++numPackets);
+            // view.updateReceivedLabel(++numPackets); not model-view
+            // this.pcs.firePropertyChange("Packets", numPackets, ++numPackets); moved outside with FIN
 
         }
 
