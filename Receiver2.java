@@ -49,7 +49,7 @@ class Receiver2 {
             @Override
             public void propertyChange(final PropertyChangeEvent evt) {
                 ReceiverView.this.lblReceived.setText(String.format("Received in-order packets: %d", (int) evt.getNewValue()));
-                if (evt.getPropertyName() == "FIN") {
+                if (evt.getPropertyName().equals("FIN")) {
                     JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
                     ReceiverView.this.setEnabledAll(true);
                 }
