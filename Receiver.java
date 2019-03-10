@@ -392,6 +392,7 @@ class Receiver {
                 //     JOptionPane.showMessageDialog(null, "Could not write to file\n" + IOEx.getMessage() + "\n", "I/O Exception",
                 //             JOptionPane.ERROR_MESSAGE);
                 // }
+            }
             this.pcs.firePropertyChange(null, true, false); // used to deal with receiver eofished
             this.sendSocket.close();
             this.receiveSocket.close();
