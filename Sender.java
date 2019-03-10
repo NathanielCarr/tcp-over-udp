@@ -1,5 +1,8 @@
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -19,9 +22,8 @@ import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
-import javax.swing.SwingWorker;
 
-class Sender {
+class Sender2 {
 
     public static void main(String[] args) throws IOException {
         new SenderView().frmRdtSender.setVisible(true);
@@ -38,61 +40,96 @@ class Sender {
         private JSpinner spnMDS;
         private JSpinner spnTimeout;
 
-        private SenderWorker senderWorker = null;
+        private SenderThread senderThread = null;
 
         private class ButtonListener implements ActionListener {
 
             @Override
             public void actionPerformed(ActionEvent evt) {
+
                 if (!txtAddr.getText().matches("[0-9\\.]+") && !txtAddr.getText().toUpperCase().equals("LOCALHOST")) {
-                    JOptionPane.showMessageDialog(null, "An IP address can only contain digits and '.'.",
+                    JOptionPane.showMessageDialog(null,
+                            "An IP address can only contain digits and '.'. Alternatively, write \"localhost\" for your own IP address",
                             "Invalid IP Address", JOptionPane.ERROR_MESSAGE);
+
                 } else if (txtFile.getText() == "") {
                     JOptionPane.showMessageDialog(null, "A file must be specified.", "Missing File",
                             JOptionPane.ERROR_MESSAGE);
+
                 } else {
                     try {
+                        // Disable the UI.
+                        setEnabledAll(false);
+
+                        // Start the thread.
                         InetAddress addr = InetAddress.getByName(txtAddr.getText());
                         int port = (int) spnPort.getValue();
                         int myPort = (int) spnMyPort.getValue();
                         int mds = (int) spnMDS.getValue();
                         int timeout = (int) spnTimeout.getValue();
                         File file = new File(txtFile.getText());
+                        senderThread = new SenderThread(addr, port, myPort, timeout, mds, file);
+                        senderThread.addPropertyChangeListener(new AttributesListener());
+                        senderThread.start();
 
-                        senderWorker = new SenderWorker(SenderView.this, addr, port, myPort, timeout, mds, file);
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
                                 "Bad Address", JOptionPane.ERROR_MESSAGE);
-                        return;
+                        // Enable the UI.
+                        setEnabledAll(true);
+
                     } catch (SocketException e) {
                         JOptionPane.showMessageDialog(null,
-                                "Couldn't connect to the destination. Please check the IP address and port number.",
+                                "Couldn't connect to the destination. Please check the IP address and port number, then check your internet connection.",
                                 "Can't Connect", JOptionPane.ERROR_MESSAGE);
-                        return;
+                        // Enable the UI.
+                        setEnabledAll(true);
+
                     } catch (IOException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The file couldn't be read. Please check the path and make sure it exists.",
                                 "Bad File Path", JOptionPane.ERROR_MESSAGE);
-                        return;
+                        // Enable the UI.
+                        setEnabledAll(true);
+
                     }
-                    senderWorker.execute();
                 }
             }
-
         }
 
-        /**
-         * Create the application.
-         */
+        private class AttributesListener implements PropertyChangeListener {
+
+            @Override
+            public void propertyChange(final PropertyChangeEvent evt) {
+
+                switch (evt.getPropertyName()) {
+                case ("transTime"): {
+                    JOptionPane.showMessageDialog(null, "The file has been sent.", "Transfer Complete",
+                            JOptionPane.INFORMATION_MESSAGE);
+                    // Reenable the UI.
+                    setEnabledAll(true);
+                    lblTransTime.setText(
+                            String.format("Transfer time: %d seconds.", (long) evt.getNewValue() / (1000 * 1000)));
+                    break;
+                }
+                case ("hasError"): {
+                    JOptionPane.showMessageDialog(null, "The file transfer was unsuccessful", "Transfer Failed",
+                            JOptionPane.ERROR_MESSAGE);
+                    // Reenable the UI.
+                    setEnabledAll(true);
+                    lblTransTime.setText(String.format("Transfer failed!"));
+                    break;
+                }
+                }
+            }
+        }
+
         public SenderView() {
             initialize();
             registerListeners();
         }
 
-        /**
-         * Initialize the contents of the frame.
-         */
         private void initialize() {
             frmRdtSender = new JFrame();
             frmRdtSender.setTitle("RDT Sender");
@@ -100,19 +137,19 @@ class Sender {
             frmRdtSender.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frmRdtSender.getContentPane().setLayout(null);
 
-            txtAddr = new JTextField();
+            txtAddr = new JTextField("localhost");
             txtAddr.setHorizontalAlignment(SwingConstants.RIGHT);
             txtAddr.setBounds(10, 27, 191, 20);
             frmRdtSender.getContentPane().add(txtAddr);
             txtAddr.setColumns(10);
 
             spnPort = new JSpinner();
-            spnPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
+            spnPort.setModel(new SpinnerNumberModel(9897, 0, 65535, 1));
             spnPort.setBounds(213, 27, 111, 20);
             frmRdtSender.getContentPane().add(spnPort);
 
             spnMyPort = new JSpinner();
-            spnMyPort.setModel(new SpinnerNumberModel(0, 0, 65535, 1));
+            spnMyPort.setModel(new SpinnerNumberModel(9898, 0, 65535, 1));
             spnMyPort.setBounds(334, 27, 111, 20);
             frmRdtSender.getContentPane().add(spnMyPort);
 
@@ -123,7 +160,7 @@ class Sender {
             frmRdtSender.getContentPane().add(txtFile);
 
             spnMDS = new JSpinner();
-            spnMDS.setModel(new SpinnerNumberModel(256, 3, 65535, 1));
+            spnMDS.setModel(new SpinnerNumberModel(256, 3, 32767, 1));
             spnMDS.setBounds(259, 105, 186, 20);
             frmRdtSender.getContentPane().add(spnMDS);
 
@@ -136,7 +173,7 @@ class Sender {
             btnSend.setBounds(10, 167, 89, 23);
             frmRdtSender.getContentPane().add(btnSend);
 
-            lblTransTime = new JLabel("Transmission time: ...");
+            lblTransTime = new JLabel();
             lblTransTime.setHorizontalAlignment(SwingConstants.LEFT);
             lblTransTime.setBounds(109, 167, 336, 20);
             frmRdtSender.getContentPane().add(lblTransTime);
@@ -151,12 +188,12 @@ class Sender {
             lblColon.setBounds(201, 30, 13, 14);
             frmRdtSender.getContentPane().add(lblColon);
 
-            JLabel lblPort = new JLabel("Port number:");
+            JLabel lblPort = new JLabel("Receiver port:");
             lblPort.setHorizontalAlignment(SwingConstants.LEFT);
             lblPort.setBounds(213, 11, 111, 14);
             frmRdtSender.getContentPane().add(lblPort);
 
-            JLabel lblMyPort = new JLabel("My port number:");
+            JLabel lblMyPort = new JLabel("Sender port:");
             lblMyPort.setHorizontalAlignment(SwingConstants.LEFT);
             lblMyPort.setBounds(334, 11, 111, 14);
             frmRdtSender.getContentPane().add(lblMyPort);
@@ -182,12 +219,22 @@ class Sender {
             btnSend.addActionListener(new ButtonListener());
         }
 
-        public void threadComplete(long elapsedTime) {
-            lblTransTime.setText(String.format("Transmission time: %d ms", elapsedTime / 1000));
+        private void setEnabledAll(Boolean status) {
+            btnSend.setEnabled(status);
+            txtAddr.setEnabled(status);
+            txtFile.setEnabled(status);
+            spnPort.setEnabled(status);
+            spnMyPort.setEnabled(status);
+            spnMDS.setEnabled(status);
+            spnTimeout.setEnabled(status);
+
+            if (!status) {
+                lblTransTime.setText("");
+            }
         }
     }
 
-    private static class SenderWorker extends SwingWorker<Void, Void> {
+    private static class SenderThread extends Thread {
 
         public static class Header {
             private Boolean handshake;
@@ -233,21 +280,26 @@ class Sender {
 
         }
 
-        private SenderView view;
+        private static final int FIN_ATTEMPTS = 4; // Only try to send FIN 4 times before stopping.
+
+        private PropertyChangeSupport pcs = new PropertyChangeSupport(this);
+        public void addPropertyChangeListener(final PropertyChangeListener listener) {
+            this.pcs.addPropertyChangeListener(listener);
+        }
+        
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
         private InetAddress addr;
         private int port;
         private int mds;
         private int seq;
-
         private byte[] fileBytes;
-
         private long startTime;
 
-        public SenderWorker(SenderView view, InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
+        public SenderThread(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
 
+            // Get the starting time for transmission.
             this.startTime = System.nanoTime();
 
             // Get the bytes of the provided file.
@@ -256,69 +308,59 @@ class Sender {
             fis.read(this.fileBytes);
             fis.close();
 
-            // Ready output socket.
+            // Set the MDS.
+            this.mds = mds;
+
+            // Ready the output socket.
             this.addr = addr;
             this.port = port;
             this.outSocket = new DatagramSocket();
             this.outSocket.setSoTimeout(timeoutMs);
 
-            // Ready input socket.
+            // Ready the input socket.
             this.inSocket = new DatagramSocket(myPort);
             this.inSocket.setSoTimeout(timeoutMs);
 
-            // Set seq to 0.
+            // Start seq at 0.
             this.seq = 0;
-
-            this.mds = mds;
-
-            this.view = view;
         }
 
-        public Void doInBackground() {
+        public void run() {
             try {
                 handshake();
                 sendFile();
                 endConnection();
-                this.inSocket.close();
-                this.outSocket.close();
-                System.out.println("DONE!");
+                inSocket.close();
+                outSocket.close();
+                pcs.firePropertyChange("transTime", 0, System.nanoTime() - this.startTime);
             } catch (Exception e) {
                 System.out.println(e.toString());
+                pcs.firePropertyChange("hasError", false, true);
             }
-            return null;
-        }
-
-        public void done() {
-            view.threadComplete(System.nanoTime() - startTime);
         }
 
         private void handshake() throws IOException {
             // Make first handshake packet, containing a body of the MDS.
-            Boolean acked = false;
-            DatagramPacket packet = makeDatagramPacket(new Header(true, false, false, seq),
-                    ByteBuffer.allocate(2).putShort((short) this.mds).array());
-                    
-            do {
+            DatagramPacket sizePacket = makeDatagramPacket(new Header(true, false, false, seq),
+                    ByteBuffer.allocate(2).putShort((short) mds).array());
+
+            while (true) {
                 try {
                     // Send first sequence of handshake.
-                    this.outSocket.send(packet);
-                    System.out.println(String.format("Sent packet (in handshake)."));
-                    acked = false;
+                    outSocket.send(sizePacket);
 
                     // Receive response from first sequence of handshake.
-                    byte[] inBuffer = new byte[mds];
-                    DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
-                    inSocket.receive(inPacket);
+                    DatagramPacket inPacket = receive();
                     Header inHeader = new Header(inPacket.getData()[0]);
-                    System.out.println(String.format("Received packet (in handshake)."));
 
                     // Check for ACK & handshake bit.
-                    acked = (inHeader.isHandshake() && inHeader.isAck() && inHeader.getSeq() == seq);
+                    if (inHeader.isHandshake() && inHeader.isAck() && inHeader.getSeq() == seq)
+                        break;
 
                 } catch (SocketTimeoutException e) {
-                    System.out.println(e.toString());
+                    System.out.println(String.format("Handshake timeout!"));
                 }
-            } while (!acked);
+            }
 
             // Increment sequence number.
             seq = ++seq % 2;
@@ -326,37 +368,35 @@ class Sender {
 
         private void sendFile() throws IOException {
             // Send each packet. byteIndex represents the first unACKd byte of the file.
-            for (int byteIndex = 0; byteIndex < this.fileBytes.length; byteIndex += (this.mds - 1)) {
+            for (int byteIndex = 0; byteIndex < fileBytes.length; byteIndex += (mds - 1)) {
+
                 // Form the DatagramPacket.
-                byte[] data = new byte[Math.min(this.mds - 1, this.fileBytes.length - byteIndex)];
-                System.arraycopy(this.fileBytes, byteIndex, data, 0, data.length);
-                DatagramPacket packet = makeDatagramPacket(new Header(false, false, false, seq), data);
+                byte[] data = new byte[Math.min(mds - 1, fileBytes.length - byteIndex)];
+                System.arraycopy(fileBytes, byteIndex, data, 0, data.length);
+                DatagramPacket dataPacket = makeDatagramPacket(new Header(false, false, false, seq), data);
 
                 // Send same packet until appropriate ACK is received.
                 Boolean acked = false;
                 do {
                     try {
                         // Send packet.
-                        this.outSocket.send(packet);
-                        System.out.println(String.format("Sent packet %d (in sendFile).", byteIndex));
-                        acked = false;
+                        outSocket.send(dataPacket);
 
                         // Receive responses until timeout OR until appropriate ACK received.
                         do {
                             // Receive response from first sequence of handshake.
-                            byte[] inBuffer = new byte[mds];
-                            DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
-                            inSocket.receive(inPacket);
+                            DatagramPacket inPacket = receive();
                             Header inHeader = new Header(inPacket.getData()[0]);
-                            System.out.println(String.format("Received packet (in sendFile)."));
 
                             // Check that the ACK received is for the sent packet.
-                            acked = (inHeader.isAck() && inHeader.getSeq() == this.seq);
+                            acked = (inHeader.isAck() && inHeader.getSeq() == seq);
+
                         } while (!acked);
 
                     } catch (SocketTimeoutException e) {
-                        System.out.println(e.toString());
+                        System.out.println(String.format("Data transfer timeout!"));
                     }
+
                 } while (!acked);
 
                 // Increment sequence number.
@@ -365,40 +405,28 @@ class Sender {
         }
 
         private void endConnection() throws IOException {
-            int finAttempts = 4;
-            Boolean acked  = false;
-
             // Fin message.
             DatagramPacket finPacket = makeDatagramPacket(new Header(false, true, false, seq), new byte[0]);
 
-            // Send fin.
-            do {
+            // Attempt to send FIN no more than FIN_ATTEMPTS times.
+            int finAttempts = 0;
+            while (finAttempts++ < FIN_ATTEMPTS) {
                 try {
-                    this.outSocket.send(finPacket);
-                    System.out.println(String.format("Sent packet (in endConnection)."));
-                    finAttempts--;
-                    acked = false;
+                    // Send packet.
+                    outSocket.send(finPacket);
 
                     // Receive response from first sequence of end of connection procedure.
-                    byte[] inBuffer = new byte[mds];
-                    DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
-                    inSocket.receive(inPacket);
+                    DatagramPacket inPacket = receive();
                     Header inHeader = new Header(inPacket.getData()[0]);
-                    System.out.println(String.format("Received packet (in endConnection)."));
 
                     // Check for ACK.
-                    acked = (inHeader.isAck() && inHeader.getSeq() == this.seq);
-
+                    if (inHeader.isAck() && inHeader.getSeq() == seq)
+                        break;
 
                 } catch (SocketTimeoutException e) {
-                    System.out.println(e.toString());
+                    System.out.println(String.format("Fin timeout!"));
                 }
-
-            } while (!acked && finAttempts > 0);
-
-            // Increment sequence number.
-            seq = ++seq % 2;
-
+            }
         }
 
         private DatagramPacket makeDatagramPacket(Header header, byte[] data) {
@@ -410,5 +438,13 @@ class Sender {
             return new DatagramPacket(contents, contents.length, this.addr, this.port);
         }
 
+        private DatagramPacket receive() throws IOException, SocketTimeoutException {
+            byte[] inBuffer = new byte[mds];
+            DatagramPacket inPacket = new DatagramPacket(inBuffer, inBuffer.length);
+            inSocket.receive(inPacket);
+            return inPacket;
+        }
+
     }
+
 }
