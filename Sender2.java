@@ -1,5 +1,8 @@
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -55,9 +58,8 @@ class Sender2 {
 
                 } else {
                     try {
-                        // Clear the transfer time label and disable transfer button.
-                        lblTransTime.setText("");
-                        btnSend.setEnabled(false);
+                        // Disable the UI.
+                        setEnabledAll(false);
 
                         // Start the thread.
                         InetAddress addr = InetAddress.getByName(txtAddr.getText());
@@ -66,22 +68,59 @@ class Sender2 {
                         int mds = (int) spnMDS.getValue();
                         int timeout = (int) spnTimeout.getValue();
                         File file = new File(txtFile.getText());
-                        senderThread = new SenderThread(SenderView.this, addr, port, myPort, timeout, mds, file);
+                        senderThread = new SenderThread(addr, port, myPort, timeout, mds, file);
+                        senderThread.addPropertyChangeListener(new AttributesListener());
                         senderThread.start();
 
                     } catch (UnknownHostException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The IP address specified cannot be resolved. Please check this address.",
                                 "Bad Address", JOptionPane.ERROR_MESSAGE);
+                        // Enable the UI.
+                        setEnabledAll(true);
+
                     } catch (SocketException e) {
                         JOptionPane.showMessageDialog(null,
                                 "Couldn't connect to the destination. Please check the IP address and port number, then check your internet connection.",
                                 "Can't Connect", JOptionPane.ERROR_MESSAGE);
+                        // Enable the UI.
+                        setEnabledAll(true);
+
                     } catch (IOException e) {
                         JOptionPane.showMessageDialog(null,
                                 "The file couldn't be read. Please check the path and make sure it exists.",
                                 "Bad File Path", JOptionPane.ERROR_MESSAGE);
+                        // Enable the UI.
+                        setEnabledAll(true);
+
                     }
+                }
+            }
+        }
+
+        private class AttributesListener implements PropertyChangeListener {
+
+            @Override
+            public void propertyChange(final PropertyChangeEvent evt) {
+
+                switch (evt.getPropertyName()) {
+                case ("transTime"): {
+                    JOptionPane.showMessageDialog(null, "The file has been sent.", "Transfer Complete",
+                            JOptionPane.INFORMATION_MESSAGE);
+                    // Reenable the UI.
+                    setEnabledAll(true);
+                    lblTransTime.setText(
+                            String.format("Transfer time: %d seconds.", (int) evt.getNewValue() / (1000 * 1000)));
+                    break;
+                }
+                case ("hasError"): {
+                    JOptionPane.showMessageDialog(null, "The file transfer was unsuccessful", "Transfer Failed",
+                            JOptionPane.ERROR_MESSAGE);
+                    // Reenable the UI.
+                    setEnabledAll(true);
+                    lblTransTime.setText(String.format("Transfer failed!"));
+                    break;
+                }
                 }
             }
         }
@@ -178,19 +217,22 @@ class Sender2 {
 
         private void registerListeners() {
             btnSend.addActionListener(new ButtonListener());
+
         }
 
-        public void transferComplete(long elapsedTime) {
-            JOptionPane.showMessageDialog(null, "The file has been transferred.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
-            btnSend.setEnabled(true);
-            lblTransTime.setText(String.format("Transfer time: %d seconds.", elapsedTime / (1000 * 1000)));
-        }
+        private void setEnabledAll(Boolean status) {
+            btnSend.setEnabled(status);
+            txtAddr.setEnabled(status);
+            txtFile.setEnabled(status);
+            spnPort.setEnabled(status);
+            spnMyPort.setEnabled(status);
+            spnMDS.setEnabled(status);
+            spnTimeout.setEnabled(status);
 
-        public void transferError() {
-            JOptionPane.showMessageDialog(null, "The file transfer was unsuccessful", "Transfer Failed", JOptionPane.ERROR_MESSAGE);
-            btnSend.setEnabled(true);
+            if (!status) {
+                lblTransTime.setText("");
+            }
         }
-
     }
 
     private static class SenderThread extends Thread {
@@ -241,21 +283,21 @@ class Sender2 {
 
         private static final int FIN_ATTEMPTS = 4; // Only try to send FIN 4 times before stopping.
 
-        private SenderView view;
-
+        private PropertyChangeSupport pcs;
+        public void addPropertyChangeListener(final PropertyChangeListener listener) {
+            this.pcs.addPropertyChangeListener(listener);
+        }
+        
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
         private InetAddress addr;
         private int port;
-
         private int mds;
         private int seq;
-
         private byte[] fileBytes;
-
         private long startTime;
 
-        public SenderThread(SenderView view, InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
+        public SenderThread(InetAddress addr, int port, int myPort, int timeoutMs, int mds, File file)
                 throws SocketException, IOException {
 
             // Get the starting time for transmission.
@@ -282,9 +324,6 @@ class Sender2 {
 
             // Start seq at 0.
             this.seq = 0;
-
-            // Set the view.
-            this.view = view;
         }
 
         public void run() {
@@ -294,10 +333,10 @@ class Sender2 {
                 endConnection();
                 inSocket.close();
                 outSocket.close();
-                view.transferComplete(System.nanoTime() - startTime);
+                pcs.firePropertyChange("transTime", 0, System.nanoTime() - this.startTime);
             } catch (Exception e) {
                 System.out.println(e.toString());
-                view.transferError();
+                pcs.firePropertyChange("hasError", false, true);
             }
         }
 
