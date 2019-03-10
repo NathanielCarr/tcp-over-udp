@@ -190,14 +190,6 @@ class Receiver2 {
             btnReceive.addActionListener(new ButtonListener());
         }
 
-        // public void updateReceivedLabel(int numPackets) {
-        //     lblReceived.setText(String.format("Received in-order packets: %d", numPackets));
-        // }
-
-        // public void transferComplete() {
-        //     JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
-        // }
-
     }
 
     private static class ReceiverThread extends Thread {
@@ -296,10 +288,8 @@ class Receiver2 {
                 fos.close();
                 this.inSocket.close();
                 this.outSocket.close();
-                // view.transferComplete(); not model-view
                 this.pcs.firePropertyChange("FIN", numPackets, ++numPackets);
             } catch (Exception e) {
-                System.out.println(e.toString());
             }
         }
 
@@ -319,17 +309,12 @@ class Receiver2 {
                 inSocket.receive(inPacket);
                 inHeader = new Header(inPacket.getData()[0]);
                 dropCounter = ++dropCounter % DROP_AT;
-                System.out.println(String.format("R: Received packet (in handshake)."));
 
                 // Send ACK and set MDS appropriately.
                 if (inHeader.isHandshake() && (dropCounter != 0 || reliable)) {
                     mds = (int) ByteBuffer.wrap(extractData(inPacket)).getShort();
                     outSocket.send(makeDatagramPacket(new Header(true, false, true, inHeader.getSeq()), new byte[0]));
-                    // view.updateReceivedLabel(++numPackets); not model-view
                     this.pcs.firePropertyChange("Packets", numPackets, ++numPackets);
-                    System.out.println(String.format("R: Sent packet (in handshake)."));
-                } else {
-                    System.out.println(String.format("R: Dropped packet (in handshake)."));
                 }
 
             } while (inHeader.isHandshake());
@@ -348,11 +333,7 @@ class Receiver2 {
                 // Send ACK for last packet received.
                 if (dropCounter != 0 || reliable) {
                     outSocket.send(makeDatagramPacket(new Header(false, false, true, inHeader.getSeq()), new byte[0]));
-                    // view.updateReceivedLabel(++numPackets); not model-view
                     this.pcs.firePropertyChange("Packets", numPackets, ++numPackets);
-                    System.out.println(String.format("R: Sent packet (in receiveFile)."));
-                } else {
-                    System.out.println(String.format("R: Dropped packet (in receiveFile)."));
                 }
 
                 // Get next packet.
@@ -361,23 +342,16 @@ class Receiver2 {
                 inSocket.receive(inPacket);
                 inHeader = new Header(inPacket.getData()[0]);
                 dropCounter = (dropCounter + 1) % DROP_AT;
-                System.out.println(String.format("R: Received packet (in receiveFile)."));
 
             } while (!inHeader.isFin());
 
             // Send ACK of FIN + own FIN.
             if (dropCounter != 0 || reliable) {
                 outSocket.send(makeDatagramPacket(new Header(false, true, true, inHeader.getSeq()), new byte[0]));
-                // view.updateReceivedLabel(++numPackets); not model-view
                 this.pcs.firePropertyChange("Packets", numPackets, ++numPackets);
-                System.out.println(String.format("R: Sent packet (in endConnection)."));
             } else {
                 dropCounter = ++dropCounter % DROP_AT;
-                System.out.println(String.format("R: Dropped packet (in endConnection)."));
             }
-
-            // view.updateReceivedLabel(++numPackets); not model-view
-            // this.pcs.firePropertyChange("Packets", numPackets, ++numPackets); moved outside with FIN
 
         }
 
