@@ -252,10 +252,6 @@ class Receiver2 {
             this.pcs.addPropertyChangeListener(listener);
         }
 
-        public void addPropertyChangeListener(final String propertyName, final PropertyChangeListener listener) {
-            this.pcs.addPropertyChangeListener(propertyName, listener);
-        }
-
         static final int DROP_AT = 10;
 
         private FileOutputStream fos;
