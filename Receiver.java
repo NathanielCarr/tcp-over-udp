@@ -63,7 +63,11 @@ class Receiver {
             @Override
             public void propertyChange(final PropertyChangeEvent evt) {
                 int numP = ReceiverView.this.model.getNumPackets();
-                ReceiverView.this.lblReceived.setText("Received in-order packets: " + Integer.toString(numP));
+                if (ReceiverView.this.model.getReceiving()) {
+                    ReceiverView.this.lblReceived.setText("Received in-order packets: " + Integer.toString(numP));
+                } else {
+                    ReceiverView.this.lblReceived.setText("Received in-order packets: " + Integer.toString(numP) + "ALL PACKETS RECEIVED");
+                }
             }
         }
 
@@ -207,7 +211,7 @@ class Receiver {
 
         private final File writeFile;
         // private List<Byte> fileByteList;
-        private final FileOutputStream packetFOS;
+        private FileOutputStream packetFOS;
 
         private final Boolean reliability;
         private final int DROP = 10;
@@ -218,19 +222,7 @@ class Receiver {
         private Boolean handshake;
         private Boolean eof;
 
-        public enum Status {
-            RECEIVING("Receiving"), FINISHED("Finished");
-            private final String statusString;
-
-            Status(final String statusString) {
-                this.statusString = statusString;
-            }
-
-            @Override
-            public String toString() {
-                return this.statusString;
-            }
-        }
+        private Boolean receiving;
 
         public static class Header {
             private Boolean handshake;
@@ -276,7 +268,6 @@ class Receiver {
 
         }
 
-        public Status rStatus;
         private int receivedPackets;
         private final PropertyChangeSupport pcs = new PropertyChangeSupport(this);
 
@@ -298,9 +289,8 @@ class Receiver {
             this.senderAddress = InetAddress.getByName(sServer);
             this.reliability = reliability;
 
-            this.packetFOS = new FileOutputStream(fileName, false);
+            this.receiving = true;
 
-            this.rStatus = Status.RECEIVING;
             this.receivedPackets = 0;
             this.tenth = 1;
 
@@ -343,7 +333,7 @@ class Receiver {
                     this.datagramSize = (int) ByteBuffer.wrap(data).getShort(); // update the max datagram size
                 }
                 else if (this.eof) { // refers to eof in recent packet
-                    this.rStatus = Status.FINISHED;
+                    this.stop();
                 }
                 // else { // for when adding data to file all at once
                 //     for (byte b : data) {
@@ -370,30 +360,27 @@ class Receiver {
         }
 
         public void run() {
-            try {
-                byte[] receiveBuff;
-                DatagramPacket packet;
-                // this.fileByteList = new ArrayList<Byte>();
-                while ((rStatus == Status.RECEIVING) && (!Thread.interrupted())) {
-                    receiveBuff = new byte[this.datagramSize];
-                    packet = new DatagramPacket(receiveBuff, this.datagramSize);
-                    try {
-                        this.receiveSocket.receive(packet);
-                    
-                        if (this.reliability || this.tenth != this.DROP) {
-                            receivePacket(packet);
-                            if (!this.reliability) {
-                                this.tenth++;
-                            }
-                        } else {
-                            this.tenth = 1;
+            byte[] receiveBuff;
+            DatagramPacket packet;
+            // this.fileByteList = new ArrayList<Byte>();
+            while ((receiving) && (!Thread.interrupted())) {
+                receiveBuff = new byte[this.datagramSize];
+                packet = new DatagramPacket(receiveBuff, this.datagramSize);
+                try {
+                    this.receiveSocket.receive(packet);
+                
+                    if (this.reliability || this.tenth != this.DROP) {
+                        receivePacket(packet);
+                        if (!this.reliability) {
+                            this.tenth++;
                         }
-                    } catch (IOException IOEx) {
-                        JOptionPane.showMessageDialog(null, "Could not parse packet\n" + IOEx.getMessage() + "\n", "I/O Exception",
-                                JOptionPane.ERROR_MESSAGE);
-                    } 
-                    Thread.sleep(1000);
-                }
+                    } else {
+                        this.tenth = 1;
+                    }
+                } catch (IOException IOEx) {
+                    JOptionPane.showMessageDialog(null, "Could not parse packet\n" + IOEx.getMessage() + "\n", "I/O Exception",
+                            JOptionPane.ERROR_MESSAGE);
+                } 
                 // byte[] fileByteArr = new byte[this.fileByteList.size()];
                 // for (int i = 0; i < fileByteArr.length; i++) {
                 //     fileByteArr[i] = fileByteList.get(i);
@@ -405,9 +392,6 @@ class Receiver {
                 //     JOptionPane.showMessageDialog(null, "Could not write to file\n" + IOEx.getMessage() + "\n", "I/O Exception",
                 //             JOptionPane.ERROR_MESSAGE);
                 // }
-            } catch (InterruptedException e) {
-
-            }
             this.pcs.firePropertyChange(null, true, false); // used to deal with receiver eofished
             this.sendSocket.close();
             this.receiveSocket.close();
@@ -415,8 +399,12 @@ class Receiver {
 
         }
 
+        public Boolean getReceiving() {
+            return this.receiving;
+        }
+
         public void stop() {
-            this.rStatus = Status.FINISHED;
+            this.receiving = false;
         }
     }
 
