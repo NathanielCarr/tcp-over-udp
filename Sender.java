@@ -67,7 +67,7 @@ class Sender2 {
                         int myPort = (int) spnMyPort.getValue();
                         int mds = (int) spnMDS.getValue();
                         int timeout = (int) spnTimeout.getValue();
-                        File file = new File(txtFile.getText());
+                        File file = new File(txtFile.getText().trim());
                         senderThread = new SenderThread(addr, port, myPort, timeout, mds, file);
                         senderThread.addPropertyChangeListener(new AttributesListener());
                         senderThread.start();
@@ -110,7 +110,7 @@ class Sender2 {
                     // Reenable the UI.
                     setEnabledAll(true);
                     lblTransTime.setText(
-                            String.format("Transfer time: %d seconds.", (long) evt.getNewValue() / (1000 * 1000)));
+                            String.format("Transfer time: %.4f seconds.", ((long) evt.getNewValue()) / (double) 1000000000));
                     break;
                 }
                 case ("hasError"): {
@@ -165,11 +165,11 @@ class Sender2 {
             frmRdtSender.getContentPane().add(spnMDS);
 
             spnTimeout = new JSpinner();
-            spnTimeout.setModel(new SpinnerNumberModel(new Integer(10000), new Integer(0), null, new Integer(1)));
+            spnTimeout.setModel(new SpinnerNumberModel(new Integer(1500), new Integer(0), null, new Integer(1)));
             spnTimeout.setBounds(259, 136, 186, 20);
             frmRdtSender.getContentPane().add(spnTimeout);
 
-            btnSend = new JButton("Send");
+            btnSend = new JButton("Transfer");
             btnSend.setBounds(10, 167, 89, 23);
             frmRdtSender.getContentPane().add(btnSend);
 

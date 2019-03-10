@@ -11,6 +11,8 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -48,9 +50,12 @@ class Receiver2 {
 
             @Override
             public void propertyChange(final PropertyChangeEvent evt) {
-                ReceiverView.this.lblReceived.setText(String.format("Received in-order packets: %d", (int) evt.getNewValue()));
-                if (evt.getPropertyName().equals("FIN")) {
-                    JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete", JOptionPane.INFORMATION_MESSAGE);
+                if (!evt.getPropertyName().equals("FIN")) {
+                    ReceiverView.this.lblReceived
+                            .setText(String.format("Received in-order packets: %d", (int) evt.getNewValue()));
+                } else {
+                    JOptionPane.showMessageDialog(null, "The file has been received.", "Transfer Complete",
+                            JOptionPane.INFORMATION_MESSAGE);
                     ReceiverView.this.setEnabledAll(true);
                 }
             }
@@ -72,10 +77,10 @@ class Receiver2 {
                         InetAddress addr = InetAddress.getByName(txtAddr.getText());
                         int port = (int) spnPort.getValue();
                         int myPort = (int) spnMyPort.getValue();
-                        FileOutputStream fos = new FileOutputStream(txtFile.getText(), false);
+                        String filePath = txtFile.getText().trim();
                         Boolean reliable = !chkUnreliable.isSelected();
 
-                        receiverThread = new ReceiverThread(addr, port, myPort, reliable, fos);
+                        receiverThread = new ReceiverThread(addr, port, myPort, reliable, filePath);
                         receiverThread.addPropertyChangeListener(new PacketsListener());
                         ReceiverView.this.setEnabledAll(false);
                         receiverThread.start();
@@ -107,7 +112,9 @@ class Receiver2 {
             txtAddr.setEnabled(status);
             chkUnreliable.setEnabled(status);
             btnReceive.setEnabled(status);
-            lblReceived.setText(String.format("Received in-order packets: %d", 0));
+
+            if (!status)
+                lblReceived.setText(String.format("Received in-order packets: %d", 0));
         }
 
         public ReceiverView() {
@@ -246,7 +253,6 @@ class Receiver2 {
 
         static final int DROP_AT = 10;
 
-        private FileOutputStream fos;
         private DatagramSocket outSocket;
         private DatagramSocket inSocket;
         private InetAddress addr;
@@ -257,10 +263,12 @@ class Receiver2 {
         private int numPackets;
         private int seq;
 
-        public ReceiverThread(InetAddress addr, int port, int myPort, Boolean reliable,
-                FileOutputStream fos) throws SocketException, IOException {
+        private String filePath;
 
-            this.fos = fos;
+        public ReceiverThread(InetAddress addr, int port, int myPort, Boolean reliable, String filePath)
+                throws SocketException, IOException {
+
+            this.filePath = filePath;
 
             // Ready output socket.
             this.addr = addr;
@@ -284,16 +292,20 @@ class Receiver2 {
 
         public void run() {
             try {
-                receiveFile();
+                byte[] fileByteArr = receiveFile();
+                FileOutputStream fos = new FileOutputStream(filePath, false);
+                fos.write(fileByteArr);
                 fos.close();
                 this.inSocket.close();
                 this.outSocket.close();
-                this.pcs.firePropertyChange("FIN", numPackets, ++numPackets);
+                this.pcs.firePropertyChange("FIN", false, true);
             } catch (Exception e) {
             }
         }
 
-        private void receiveFile() throws IOException {
+        private byte[] receiveFile() throws IOException {
+
+            List<Byte> fileBytes = new ArrayList<Byte>();
 
             numPackets = 0;
 
@@ -326,7 +338,8 @@ class Receiver2 {
             do {
                 // Process packet contents if the packet received is appropriate.
                 if (inHeader.getSeq() == seq) {
-                    fos.write(extractData(inPacket));
+                    for (byte pByte : extractData(inPacket))
+                        fileBytes.add(pByte);
                     seq = ++seq % 2;
                 }
 
@@ -352,6 +365,13 @@ class Receiver2 {
             } else {
                 dropCounter = ++dropCounter % DROP_AT;
             }
+
+            byte[] fileBytesArr = new byte[fileBytes.size()];
+            for (int i = 0; i < fileBytes.size(); i++) {
+                fileBytesArr[i] = fileBytes.get(i);
+            }
+
+            return fileBytesArr;
 
         }
 
