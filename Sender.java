@@ -358,7 +358,6 @@ class Sender2 {
                         break;
 
                 } catch (SocketTimeoutException e) {
-                    System.out.println(String.format("Handshake timeout!"));
                 }
             }
 
@@ -394,7 +393,6 @@ class Sender2 {
                         } while (!acked);
 
                     } catch (SocketTimeoutException e) {
-                        System.out.println(String.format("Data transfer timeout!"));
                     }
 
                 } while (!acked);
@@ -424,7 +422,6 @@ class Sender2 {
                         break;
 
                 } catch (SocketTimeoutException e) {
-                    System.out.println(String.format("Fin timeout!"));
                 }
             }
         }
