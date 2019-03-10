@@ -110,7 +110,7 @@ class Sender2 {
                     // Reenable the UI.
                     setEnabledAll(true);
                     lblTransTime.setText(
-                            String.format("Transfer time: %d seconds.", (int) evt.getNewValue() / (1000 * 1000)));
+                            String.format("Transfer time: %d seconds.", (long) evt.getNewValue() / (1000 * 1000)));
                     break;
                 }
                 case ("hasError"): {
@@ -217,7 +217,6 @@ class Sender2 {
 
         private void registerListeners() {
             btnSend.addActionListener(new ButtonListener());
-
         }
 
         private void setEnabledAll(Boolean status) {
@@ -283,7 +282,7 @@ class Sender2 {
 
         private static final int FIN_ATTEMPTS = 4; // Only try to send FIN 4 times before stopping.
 
-        private PropertyChangeSupport pcs;
+        private PropertyChangeSupport pcs = new PropertyChangeSupport(this);
         public void addPropertyChangeListener(final PropertyChangeListener listener) {
             this.pcs.addPropertyChangeListener(listener);
         }
