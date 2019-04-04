@@ -338,8 +338,15 @@ class Receiver {
             do {
                 // Process packet contents if the packet received is appropriate.
                 if (inHeader.getSeq() == seq) {
-                    for (byte pByte : extractData(inPacket))
-                        fileBytes.add(pByte);
+                    // ISSUE: iterated through entire buffer even when the entire buffer was empty.
+                    // The code below solves this by looking at the ACTUAL message length and iterating only through those bytes.
+                    // for (byte pByte : extractData(inPacket)) {
+                    //     fileBytes.add(pByte);
+                    // }
+                    byte[] byteBuf = extractData(inPacket);
+                    for (int i = 0; i < inPacket.getLength() - 1; i++) {
+                        fileBytes.add(byteBuf[i]);
+                    }
                     seq = ++seq % 2;
                 }
 
