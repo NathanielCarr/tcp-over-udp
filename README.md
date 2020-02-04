@@ -1,4 +1,5 @@
 # TCP Over UDP
+Written for CP 372 (Computer Networks); enables TCP-like transmission of files from one computer to another over UDP. 
 
 ## Authors
 Group 059
